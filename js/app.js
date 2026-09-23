@@ -46,7 +46,7 @@
     for (const s of state.students) {
       students[s.userId] = {
         sig: s.sig, text: s.text, extractStatus: s.extractStatus,
-        checks: s.checks, confirmed: s.confirmed, note: s.note, reasonEdits: s.reasonEdits,
+        checks: s.checks, confirmed: s.confirmed, note: s.note, reasonEdits: s.reasonEdits, aiSuspect: s.aiSuspect,
       };
     }
     Store.save(state.courseId, state.courseWorkId, { rubric: state.rubric, students, updatedAt: Date.now() });
@@ -205,6 +205,7 @@
             confirmed: sigMatch && !legacy ? !!prev.confirmed : false,
             note: prev.note || '',
             reasonEdits: prev.reasonEdits || {},
+            aiSuspect: sigMatch && prev.aiSuspect != null ? prev.aiSuspect : null,
           };
           s.flags = Grading.detectFlags(state.rubric, s.text);
           if (regradeAll && s.text) applyAutoChecks(s);
@@ -255,7 +256,7 @@
 
   function applyAutoChecks(s) {
     if (s.status === '미제출') { s.checks = {}; return; }
-    if (!s.confirmed) s.checks = Grading.suggestChecks(state.rubric, s.text);
+    if (!s.confirmed) s.checks = Grading.suggestChecks(state.rubric, s.text, Grading.isSuspect(s));
   }
 
   async function processStudent(s) {
@@ -378,6 +379,7 @@
           <input type="text" data-gfield="reqPattern" value="${esc((g.requires && g.requires.pattern) || '')}" placeholder="정규식 — 제출물에 없으면 이 영역 체크를 모두 해제 (예: \\bclass\\s+\\w+)">
           <input type="text" data-gfield="reqMessage" value="${esc((g.requires && g.requires.message) || '')}" placeholder="없을 때 표시할 근거">
         </div>
+        <label class="aiblock-opt"><input type="checkbox" data-gfield="aiBlock" ${g.aiBlock ? 'checked' : ''}> AI 작성 의심 학생은 이 영역 체크를 모두 해제(기본 점수만)</label>
         <div class="check-row check-row-head"><span>체크 항목</span><span>배점</span><span>자동 감지</span><span>키워드 / 정규식</span><span>미충족 시 근거</span><span></span></div>
         ${g.checks
           .map(
@@ -403,7 +405,8 @@
       groupEl.querySelectorAll('[data-gfield]').forEach((input) => {
         input.addEventListener('change', () => {
           const f = input.dataset.gfield;
-          if (f === 'name') g().name = input.value;
+          if (f === 'aiBlock') g().aiBlock = input.checked;
+          else if (f === 'name') g().name = input.value;
           else if (f === 'base') g().base = Number(input.value) || 0;
           else {
             const req = g().requires || { pattern: '', message: '' };
@@ -603,7 +606,7 @@
         return `
         <div class="student-row ${statusClass(s.status)} ${state.selectedUserId === s.userId ? 'selected' : ''}" data-uid="${esc(s.userId)}">
           <span class="confirm-dot ${s.confirmed ? 'on' : ''}"></span>
-          <span class="name">${esc(s.name)}${s.resubmitted ? ' 🔄' : ''}${s.flags && s.flags.length ? ' ⚠️' : ''}</span>
+          <span class="name">${esc(s.name)}${s.resubmitted ? ' 🔄' : ''}${Grading.isSuspect(s) ? ' 🤖' : ''}</span>
           <span class="status ${statusClass(s.status)}">${esc(s.status)}</span>
           <span class="total">${total}</span>
         </div>`;
@@ -645,7 +648,7 @@
         <span class="status ${statusClass(s.status)}">${esc(s.status)}</span>
         ${s.resubmitted ? '<span class="muted">🔄 재제출됨</span>' : ''}
       </div>
-      ${s.flags && s.flags.length ? `<div class="flag-banner">⚠️ ${s.flags.map(esc).join('<br>⚠️ ')}</div>` : ''}
+      ${Grading.isSuspect(s) ? `<div class="flag-banner">🤖 AI 작성 의심${s.aiSuspect === true ? ' (선생님이 지정)' : ''}${s.flags && s.flags.length ? '<br>· ' + s.flags.map(esc).join('<br>· ') : ''}</div>` : ''}
       <div class="file-tabs">
         ${s.files
           .map(
@@ -719,15 +722,17 @@
     s.checks = s.checks || {};
     s.reasonEdits = s.reasonEdits || {};
     const absent = s.status === '미제출';
+    const suspect = Grading.isSuspect(s);
     const groupsHtml = state.rubric.groups
       .map((g) => {
         const blocked = Grading.groupBlocked(g, s.text);
+        const aiBlocked = suspect && g.aiBlock;
         const checksHtml = g.checks
           .map((c) => {
             const on = !!s.checks[c.id];
             let sub = '';
             if (on) {
-              const ex = Grading.explain(g, c, s.text);
+              const ex = Grading.explain(g, c, s.text, suspect);
               sub = `<div class="evidence">✓ ${ex.met ? esc(ex.reason) : '선생님이 직접 체크'}</div>`;
             } else if (!absent) {
               const edited = s.reasonEdits[c.id] != null;
@@ -752,7 +757,8 @@
         <div class="grade-group">
           <div class="grade-group-head"><span>${esc(g.name)}</span><span class="g-score">${absent ? 0 : Grading.groupScore(g, s.checks)} / ${Grading.groupMax(g)}점</span></div>
           ${g.base ? `<div class="base-note">기본 ${g.base}점 포함</div>` : ''}
-          ${blocked ? `<p class="flag-note">⚠ 필수 조건 미충족으로 자동 채점에서 모두 미체크 — ${esc(g.requires.message || '')}. 필요하면 직접 체크하세요.</p>` : ''}
+          ${aiBlocked ? '<p class="flag-note">🤖 AI 작성 의심 — 자동 채점에서 이 영역은 모두 미체크(기본 점수만). 의심을 해제하면 다시 채점됩니다.</p>' : ''}
+          ${!aiBlocked && blocked ? `<p class="flag-note">⚠ 필수 조건 미충족으로 자동 채점에서 모두 미체크 — ${esc(g.requires.message || '')}. 필요하면 직접 체크하세요.</p>` : ''}
           ${checksHtml || '<p class="muted" style="font-size:12px">체크 항목이 없습니다. "채점 기준" 탭에서 추가하세요.</p>'}
         </div>`;
       })
@@ -760,7 +766,14 @@
 
     el.innerHTML = `
       <h3 style="margin-top:0">${esc(s.name)} 채점</h3>
-      ${absent ? '<p class="muted">미제출 — 0점</p>' : ''}
+      ${absent ? '<p class="muted">미제출 — 0점</p>' : `
+      <div class="ai-box ${suspect ? 'on' : ''}">
+        <label class="check-line"><input type="checkbox" id="aiSuspectChk" ${suspect ? 'checked' : ''}>
+          <span class="c-label"><b>🤖 AI 작성 의심</b></span>
+          <span class="c-points">${s.aiSuspect == null ? '자동 판정' : '선생님이 지정'}</span></label>
+        ${s.flags && s.flags.length ? `<div class="ai-signals">자동 감지 신호: ${s.flags.map(esc).join(' / ')}</div>` : '<div class="ai-signals">자동 감지 신호 없음</div>'}
+        ${s.aiSuspect != null ? '<button class="link-btn" id="aiAutoBtn">자동 판정으로 되돌리기</button>' : ''}
+      </div>`}
       ${groupsHtml}
       <div class="total-line">
         합계 <span id="totalScore">${Grading.total(state.rubric, s.checks, s.status)}</span>점
@@ -791,6 +804,19 @@
         persist();
       });
     });
+    // AI 의심 체크/해제 → AI 의심 시 0점 처리하는 영역(aiBlock)만 다시 자동 채점
+    const setSuspect = (v) => {
+      s.aiSuspect = v;
+      s.checks = Grading.suggestChecks(state.rubric, s.text, Grading.isSuspect(s), s.checks, true);
+      renderGradingPanel(s);
+      renderDocViewer(s);
+      renderStudentList();
+      persist();
+    };
+    const aiChk = el.querySelector('#aiSuspectChk');
+    if (aiChk) aiChk.addEventListener('change', () => setSuspect(aiChk.checked));
+    const aiAuto = el.querySelector('#aiAutoBtn');
+    if (aiAuto) aiAuto.addEventListener('click', () => setSuspect(null));
     el.querySelector('#confirmChk').addEventListener('change', (e) => {
       s.confirmed = e.target.checked;
       renderStudentList();

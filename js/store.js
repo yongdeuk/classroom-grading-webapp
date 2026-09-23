@@ -58,7 +58,7 @@ const Store = (() => {
   function setCourseRubric(courseId, rubric) { if (courseId) writeJson('grader:courseRubric:' + courseId, rubric); }
 
   function exportCsv(rubric, students, meta) {
-    const header = ['이름', '상태'].concat(rubric.groups.map((g) => g.name), ['합계', '확인', '미충족 항목 근거', '비고']);
+    const header = ['이름', '상태'].concat(rubric.groups.map((g) => g.name), ['합계', '확인', 'AI 의심', '미충족 항목 근거', '비고']);
     const rows = [header];
     for (const s of students) {
       const checks = s.checks || {};
@@ -66,6 +66,7 @@ const Store = (() => {
       for (const g of rubric.groups) row.push(s.status === '미제출' ? 0 : Grading.groupScore(g, checks));
       row.push(Grading.total(rubric, checks, s.status));
       row.push(s.confirmed ? 'Y' : '');
+      row.push(s.status !== '미제출' && Grading.isSuspect(s) ? 'Y' : '');
       const reasons = [];
       if (s.status !== '미제출') {
         for (const g of rubric.groups) for (const c of g.checks) {

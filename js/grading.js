@@ -5,7 +5,9 @@
 //    체크할 때마다 그 배점만큼 더해져서, 예) 기본 20 + 5점 체크 4개 → 20/25/30/35/40 밴드가 된다.
 //  - step: 배점 간격(정보과학은 5점). 배점이 간격에 안 맞으면 편집 화면에서 경고한다.
 //  - baseScore: 제출한 학생의 합계 최저점(선택). 0이면 사용하지 않음.
-//  - flags: 제출물에서 교사가 눈여겨봐야 할 신호(점수에는 영향 없음, 경고만 표시).
+//  - flags: "AI 작성 의심" 신호. 하나라도 걸리면 그 학생을 AI 의심으로 자동 표시하고,
+//    교사는 학생마다 의심을 직접 체크/해제할 수 있다(student.aiSuspect: null=자동, true/false=직접).
+//  - group.aiBlock: AI 의심인 학생은 그 영역 체크를 전부 해제(기본 점수만).
 //  - group.requires: 이 조건(정규식)이 제출물에 없으면 그 영역 체크를 자동으로 전부 해제.
 // 과목에 상관없이 쓸 수 있도록 과목 전용 규칙은 모두 루브릭 데이터 안에 둔다.
 const Grading = (() => {
@@ -34,7 +36,9 @@ const Grading = (() => {
       },
       {
         id: 'impl', name: '함수를 활용한 스택·큐 연산 구현', base: 10,
-        requires: { pattern: '\\bclass\\s+\\w+', message: 'class 없이 구현됨 — 교과서의 class Stack/Queue를 변경하라는 요구사항 미준수(AI 작성 의심)' },
+        // class 없이 구현하면(교과서의 class Stack/Queue를 변경하라는 요구사항 위반) AI 작성 의심 →
+        // 이 영역은 기본 점수만. 교사가 의심을 해제하면 다시 자동 채점된다.
+        aiBlock: true,
         checks: [
           { id: 'impl_s_io', label: '스택 push·pop 함수 구현', points: 5, auto: { type: 'regex', pattern: '(?=[\\s\\S]*def\\s+push)(?=[\\s\\S]*def\\s+pop)' }, reason: 'push 또는 pop 함수 정의(def)가 없음' },
           { id: 'impl_s_peek', label: '스택 peek·isEmpty 함수 구현', points: 5, auto: { type: 'regex', pattern: '(?=[\\s\\S]*def\\s+(peek|top))(?=[\\s\\S]*def\\s+is_?empty)' }, reason: 'peek 또는 isEmpty 함수 정의(def)가 없음' },
@@ -53,8 +57,7 @@ const Grading = (() => {
       },
     ],
     flags: [
-      { type: 'missing', pattern: '\\bclass\\s+\\w+', message: 'class 없이 구현됨 — 과제 요구사항(교과서의 class Stack/Queue를 변경) 미준수. AI 작성 의심' },
-      { type: 'match', pattern: '(import\\s+collections|from\\s+collections|import\\s+queue\\b|from\\s+queue\\b|\\bdeque\\s*\\(|\\bQueue\\s*\\(\\))', message: 'deque/queue 내장 모듈 사용 의심 — 직접 구현 요구사항 위반 가능' },
+      { type: 'missing', pattern: '\\bclass\\s+\\w+', message: 'class 없이 구현됨 — 과제 요구사항(교과서의 class Stack/Queue를 변경) 미준수' },
     ],
   };
 
@@ -63,6 +66,7 @@ const Grading = (() => {
   const LEGACY_DEFAULT_IDS = ['design_s_push', 'impl_s_push', 'exc_overflow'];
 
   const clone = (o) => JSON.parse(JSON.stringify(o));
+  const CLASS_RE = '\\bclass\\s+\\w+';
 
   function defaultRubric() { return normalize(clone(INFO_SCIENCE_STACK_QUEUE)); }
   function blankRubric() { return normalize({ name: '새 채점 기준', step: 5, baseScore: 0, groups: [], flags: [] }); }
@@ -88,7 +92,9 @@ const Grading = (() => {
       while (groupIds.has(gid)) gid += '_';
       groupIds.add(gid);
       let requires = g.requires && g.requires.pattern ? { pattern: String(g.requires.pattern), message: String(g.requires.message || '') } : null;
-      if (!requires && g.requiresClass) requires = { pattern: '\\bclass\\s+\\w+', message: 'class 없이 구현됨' };
+      let aiBlock = !!g.aiBlock || !!g.requiresClass;
+      // 이전 버전의 "class 필수 조건"은 AI 의심 처리로 바꾼다(교사가 의심을 해제할 수 있도록).
+      if (requires && requires.pattern === CLASS_RE) { requires = null; aiBlock = true; }
       const checkIds = new Set();
       const checks = (g.checks || []).map((c) => {
         const label = String(c.label || '체크 항목');
@@ -98,10 +104,13 @@ const Grading = (() => {
         const type = c.auto && AUTO_TYPES[c.auto.type] ? c.auto.type : 'none';
         return { id: cid, label, points: Number(c.points) || 0, auto: { type, pattern: String((c.auto && c.auto.pattern) || '') }, reason: String(c.reason || '') };
       });
-      return { id: gid, name, base: Number(g.base) || 0, requires, checks };
+      return { id: gid, name, base: Number(g.base) || 0, requires, aiBlock, checks };
     });
+    if (r.groups.some((g) => g.aiBlock) && !(r.flags || []).some((f) => f && f.pattern === CLASS_RE) && Array.isArray(raw)) {
+      r.flags = [{ type: 'missing', pattern: CLASS_RE, message: 'class 없이 구현됨' }];
+    }
     r.flags = (r.flags || [])
-      .filter((f) => f && f.pattern)
+      .filter((f) => f && f.pattern && !/import\\s\+collections/.test(f.pattern)) // 내장 모듈 의심 신호는 뺐음
       .map((f) => ({ type: f.type === 'match' ? 'match' : 'missing', pattern: String(f.pattern), message: String(f.message || '') }));
     return r;
   }
@@ -175,9 +184,16 @@ const Grading = (() => {
     return re ? !re.test(text) : false;
   }
 
+  // AI 작성 의심 여부: 선생님이 직접 정했으면 그 값, 아니면 의심 신호(flags)가 하나라도 있으면 의심.
+  function isSuspect(s) {
+    if (s.aiSuspect === true || s.aiSuspect === false) return s.aiSuspect;
+    return !!(s.flags && s.flags.length);
+  }
+
   // 체크 항목 하나에 대한 자동 판정과 근거 문장.
-  function explain(g, c, text) {
+  function explain(g, c, text, suspect) {
     if (!text) return { met: false, reason: '추출된 텍스트가 없어 자동 판정을 하지 못함 — 가운데 파일을 직접 확인하세요.' };
+    if (suspect && g.aiBlock) return { met: false, reason: 'AI 작성 의심으로 이 영역은 기본 점수만 부여' };
     if (groupBlocked(g, text)) {
       return { met: false, reason: '필수 조건 미충족: ' + (g.requires.message || '/' + g.requires.pattern + '/ 없음') };
     }
@@ -189,16 +205,20 @@ const Grading = (() => {
     return { met: false, reason: (c.reason ? c.reason + ' — ' : '') + d.evidence };
   }
 
-  function suggestChecks(r, text) {
-    const out = {};
-    for (const g of r.groups) for (const c of g.checks) out[c.id] = explain(g, c, text).met;
+  // onlyAiBlock: AI 의심을 바꿨을 때처럼 aiBlock 영역만 다시 계산할 때
+  function suggestChecks(r, text, suspect, prev, onlyAiBlock) {
+    const out = Object.assign({}, prev || {});
+    for (const g of r.groups) {
+      if (onlyAiBlock && !g.aiBlock) continue;
+      for (const c of g.checks) out[c.id] = explain(g, c, text, suspect).met;
+    }
     return out;
   }
 
   // 체크되지 않은 항목의 근거(교사가 고친 문장이 있으면 그것을 우선).
   function reasonFor(g, c, s) {
     if (s.reasonEdits && s.reasonEdits[c.id] != null) return s.reasonEdits[c.id];
-    const ex = explain(g, c, s.text);
+    const ex = explain(g, c, s.text, isSuspect(s));
     if (ex.met) return '자동 감지로는 충족(' + ex.reason + ')으로 판단했으나 선생님이 체크를 해제함 — 근거를 적어 주세요.';
     return ex.reason;
   }
@@ -220,6 +240,6 @@ const Grading = (() => {
   return {
     AUTO_TYPES, normalize, defaultRubric, blankRubric, presets, hash,
     groupMax, rubricMax, rubricMin, groupScore, total, offStep,
-    detect, explain, suggestChecks, reasonFor, detectFlags, groupBlocked,
+    detect, explain, suggestChecks, reasonFor, detectFlags, groupBlocked, isSuspect,
   };
 })();
