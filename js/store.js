@@ -37,14 +37,42 @@ const Store = (() => {
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   }
 
+  // ---- 채점 기준 보관함(과목·과제를 넘어 다시 쓰는 기준) ----
+  const LIB_KEY = 'grader:rubricLibrary';
+  function readJson(k, fallback) {
+    try { const raw = localStorage.getItem(k); return raw ? JSON.parse(raw) : fallback; } catch (e) { return fallback; }
+  }
+  function writeJson(k, v) {
+    try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; }
+  }
+  function libraryList() { return readJson(LIB_KEY, []); }
+  function librarySave(rubric) {
+    const list = libraryList().filter((x) => x.name !== rubric.name);
+    list.unshift({ name: rubric.name, rubric, savedAt: Date.now() });
+    writeJson(LIB_KEY, list);
+  }
+  function libraryDelete(name) { writeJson(LIB_KEY, libraryList().filter((x) => x.name !== name)); }
+
+  // 수업별 "마지막으로 쓴 기준" — 같은 수업의 새 과제를 열면 이 기준으로 시작한다.
+  function courseRubric(courseId) { return readJson('grader:courseRubric:' + courseId, null); }
+  function setCourseRubric(courseId, rubric) { if (courseId) writeJson('grader:courseRubric:' + courseId, rubric); }
+
   function exportCsv(rubric, students, meta) {
-    const header = ['이름', '상태'].concat(rubric.map((r) => r.name), ['합계', '확인', '비고']);
+    const header = ['이름', '상태'].concat(rubric.groups.map((g) => g.name), ['합계', '확인', '미충족 항목 근거', '비고']);
     const rows = [header];
     for (const s of students) {
+      const checks = s.checks || {};
       const row = [s.name, s.status];
-      for (const r of rubric) row.push(Grading.itemScore(r, s.checks || {}));
-      row.push(Grading.total(rubric, s.checks || {}, s.status));
+      for (const g of rubric.groups) row.push(s.status === '미제출' ? 0 : Grading.groupScore(g, checks));
+      row.push(Grading.total(rubric, checks, s.status));
       row.push(s.confirmed ? 'Y' : '');
+      const reasons = [];
+      if (s.status !== '미제출') {
+        for (const g of rubric.groups) for (const c of g.checks) {
+          if (!checks[c.id]) reasons.push('[' + c.label + ' -' + c.points + '] ' + Grading.reasonFor(g, c, s));
+        }
+      }
+      row.push(reasons.join('\n'));
       row.push(s.note || '');
       rows.push(row);
     }
@@ -85,5 +113,8 @@ const Store = (() => {
     });
   }
 
-  return { load, save, exportJson, exportCsv, importJsonFile };
+  return {
+    load, save, exportJson, exportCsv, importJsonFile,
+    libraryList, librarySave, libraryDelete, courseRubric, setCourseRubric,
+  };
 })();

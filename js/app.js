@@ -6,13 +6,15 @@
   const esc = (s) =>
     String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const clone = (o) => JSON.parse(JSON.stringify(o));
-  const AUTO_LABEL = { none: '자동 감지 없음', keyword: '키워드', regex: '정규식' };
 
   const state = {
     courseId: null, courseWorkId: null, courseName: '', courseWorkTitle: '',
-    rubric: clone(Grading.DEFAULT_RUBRIC),
+    rubric: Grading.defaultRubric(),
+    rubricTouched: false, // 과제를 불러오기 전에 기준을 바꿨으면, 불러올 때 그 기준을 쓴다
+    loaded: false,
     students: [],
     selectedUserId: null,
+    viewIdx: {}, // 학생별로 가운데에 보고 있는 파일 번호
   };
 
   function toast(msg, ms) {
@@ -37,14 +39,40 @@
   }
 
   function persist() {
+    const courseId = state.loaded ? state.courseId : $('#courseSelect').value;
+    if (/^\d+$/.test(courseId || '')) Store.setCourseRubric(courseId, state.rubric);
+    if (!state.loaded) return;
     const students = {};
     for (const s of state.students) {
       students[s.userId] = {
         sig: s.sig, text: s.text, extractStatus: s.extractStatus,
-        checks: s.checks, confirmed: s.confirmed, note: s.note,
+        checks: s.checks, confirmed: s.confirmed, note: s.note, reasonEdits: s.reasonEdits,
       };
     }
     Store.save(state.courseId, state.courseWorkId, { rubric: state.rubric, students, updatedAt: Date.now() });
+  }
+
+  const selectedStudent = () => state.students.find((x) => x.userId === state.selectedUserId);
+
+  function renderAllGrading() {
+    renderStudentList();
+    const s = selectedStudent();
+    if (s) { renderDocViewer(s); renderGradingPanel(s); }
+    renderRubricBadge();
+  }
+
+  // ---------------- 탭 ----------------
+  function showTab(tab) {
+    document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+    $('#tabGrade').classList.toggle('hidden', tab !== 'grade');
+    $('#tabRubric').classList.toggle('hidden', tab !== 'rubric');
+    try { localStorage.setItem('grader:tab', tab); } catch (e) {}
+  }
+  document.querySelectorAll('.tab-btn').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+
+  function renderRubricBadge() {
+    const r = state.rubric;
+    $('#rubricBadge').textContent = r.name + ' · ' + Grading.rubricMin(r) + '~' + Grading.rubricMax(r) + '점';
   }
 
   // ---------------- 인증 ----------------
@@ -56,8 +84,9 @@
       $('#userInfo').classList.remove('hidden');
       $('#userInfo').textContent = '로그인됨';
       $('#app').classList.remove('hidden');
-      loadCourses();
+      if (!loadCourses._done) { loadCourses._done = true; loadCourses(); }
     } else {
+      loadCourses._done = false;
       $('#signInBtn').classList.remove('hidden');
       $('#signOutBtn').classList.add('hidden');
       $('#userInfo').classList.add('hidden');
@@ -73,11 +102,21 @@
       const courses = await Api.listCourses();
       if (!courses.length) { sel.innerHTML = '<option>담당 수업이 없습니다</option>'; return; }
       sel.innerHTML = courses.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
-      await loadCourseWorks(sel.value);
+      await onCourseChange(sel.value);
     } catch (e) {
       sel.innerHTML = '<option>불러오기 실패</option>';
       toast('수업 목록을 불러오지 못했습니다: ' + e.message);
     }
+  }
+
+  async function onCourseChange(courseId) {
+    // 아직 과제를 불러오지 않았고 기준도 손대지 않았으면, 그 수업에서 마지막으로 쓴 기준을 미리 보여 준다.
+    if (!state.loaded && !state.rubricTouched) {
+      const cr = Store.courseRubric(courseId);
+      state.rubric = cr ? Grading.normalize(cr) : Grading.defaultRubric();
+      renderRubricTab();
+    }
+    await loadCourseWorks(courseId);
   }
 
   async function loadCourseWorks(courseId) {
@@ -122,7 +161,21 @@
 
       const cached = Store.load(state.courseId, state.courseWorkId);
       const cachedStudents = (cached && cached.students) || {};
-      state.rubric = (cached && cached.rubric) || clone(Grading.DEFAULT_RUBRIC);
+
+      // 기준 고르기: 방금 직접 올리거나 고친 기준 > 이 과제에 저장된 기준 > 이 수업의 마지막 기준 > 기본 기준
+      let regradeAll = false, legacy = false;
+      if (state.rubricTouched) {
+        regradeAll = true;
+      } else if (cached && cached.rubric) {
+        legacy = Array.isArray(cached.rubric);
+        state.rubric = Grading.normalize(cached.rubric);
+        regradeAll = legacy;
+      } else {
+        const cr = Store.courseRubric(state.courseId);
+        state.rubric = cr ? Grading.normalize(cr) : state.rubric;
+        regradeAll = true;
+      }
+      state.rubricTouched = false;
 
       const rosterIds = new Set(students.map((s) => s.userId));
       const extraSubs = subs.filter((sub) => !rosterIds.has(sub.userId));
@@ -142,25 +195,33 @@
           const sig = files.map((f) => f.id).join(',') + '|' + answer.length + '|' + links.join(',');
           const prev = cachedStudents[userId] || {};
           const sigMatch = prev.sig === sig;
-          return {
+          const s = {
             userId, name,
             status, files, links, answer, sig,
             resubmitted: !!prev.sig && !sigMatch,
             text: sigMatch ? prev.text || '' : '',
-            flags: sigMatch ? Grading.detectFlags(prev.text || '') : [],
             extractStatus: sigMatch ? prev.extractStatus || '대기' : (files.length || answer ? '대기' : '없음'),
             checks: prev.checks || {},
-            confirmed: sigMatch ? !!prev.confirmed : false,
+            confirmed: sigMatch && !legacy ? !!prev.confirmed : false,
             note: prev.note || '',
+            reasonEdits: prev.reasonEdits || {},
           };
+          s.flags = Grading.detectFlags(state.rubric, s.text);
+          if (regradeAll && s.text) applyAutoChecks(s);
+          return s;
         })
         .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
 
-      $('#rubricPanel').classList.remove('hidden');
+      state.loaded = true;
+      state.selectedUserId = null;
+      $('#gradeEmpty').classList.add('hidden');
       $('#workArea').classList.remove('hidden');
-      renderRubricEditor();
-      renderStudentList();
+      renderRubricTab();
+      renderAllGrading();
+      $('#docViewer').innerHTML = $('#gradingPanel').innerHTML = '<p class="muted">왼쪽 목록에서 학생을 선택하세요.</p>';
+      $('#docViewer').dataset.key = '';
       persist();
+      if (legacy) toast('예전 형식의 채점 기준을 새 기준(5점 간격)으로 바꿨습니다. 확인 완료 표시는 다시 해 주세요.', 6000);
 
       const todo = state.students.filter((s) => s.status !== '미제출' && s.extractStatus !== '완료');
       setLoadStatus(state.students.length + '명 · 텍스트 추출 중 (0/' + todo.length + ')…');
@@ -208,104 +269,323 @@
       s.extractStatus = '오류';
       s.text = '[추출 오류] ' + e.message;
     }
-    s.flags = Grading.detectFlags(s.text);
+    s.flags = Grading.detectFlags(state.rubric, s.text);
     applyAutoChecks(s);
     renderStudentList();
     if (state.selectedUserId === s.userId) { renderDocViewer(s); renderGradingPanel(s); }
   }
 
-  // ---------------- 루브릭(체크리스트 기준) 편집 ----------------
+  // 기준이 바뀌었을 때: 확인 완료되지 않은 학생 전원을 새 기준으로 다시 자동 채점.
+  function regradeUnconfirmed() {
+    let n = 0, kept = 0;
+    for (const s of state.students) {
+      s.flags = Grading.detectFlags(state.rubric, s.text);
+      if (s.confirmed) { kept++; continue; }
+      applyAutoChecks(s);
+      n++;
+    }
+    return { n, kept };
+  }
+
+  // 업로드·보관함 등으로 기준을 통째로 바꾸고 바로 적용한다.
+  function applyRubric(r) {
+    state.rubric = Grading.normalize(clone(r));
+    let msg;
+    if (state.loaded) {
+      const { n, kept } = regradeUnconfirmed();
+      msg = '채점 기준 적용 완료 — ' + n + '명 자동 재채점' + (kept ? ' (확인 완료된 ' + kept + '명은 점수 유지, 다시 확인 필요)' : '');
+    } else {
+      state.rubricTouched = true;
+      msg = '채점 기준 적용 완료 — 제출물을 불러오면 이 기준으로 채점합니다';
+    }
+    persist();
+    renderRubricTab();
+    renderAllGrading();
+    return msg;
+  }
+
+  // 편집기에서 조금씩 고칠 때(재채점은 버튼으로)
+  function onRubricEdited(rerenderEditor) {
+    if (!state.loaded) state.rubricTouched = true;
+    persist();
+    if (rerenderEditor) renderRubricEditor();
+    renderRubricSummary();
+    renderAllGrading();
+  }
+
+  // ---------------- 채점 기준 탭 ----------------
+  function renderRubricTab() {
+    renderLibrary();
+    renderRubricEditor();
+    renderRubricSummary();
+    renderRubricBadge();
+    $('#geminiKeyInput').value = Gemini.getKey() ? '••••••••(저장됨)' : '';
+  }
+
+  function renderRubricSummary() {
+    const r = state.rubric;
+    const bad = Grading.offStep(r);
+    const src = r.source ? `<span class="muted"> · ${esc(r.source.fileName)}에서 ${r.source.via === 'ai' ? 'AI로 읽음' : '불러옴'}</span>` : '';
+    $('#rubricSummary').innerHTML = `
+      제출자 점수 범위 <b>${Grading.rubricMin(r)} ~ ${Grading.rubricMax(r)}점</b>
+      (평가 영역 ${r.groups.length}개 · 체크 항목 ${r.groups.reduce((s, g) => s + g.checks.length, 0)}개)${src}
+      ${bad.length ? `<div class="warn-line">⚠ 배점 간격(${r.step}점)에 맞지 않음: ${bad.map(esc).join(', ')}</div>` : ''}`;
+    $('#rubricGroups').querySelectorAll('.rubric-group').forEach((el) => {
+      const g = r.groups[Number(el.dataset.gi)];
+      if (g) el.querySelector('.group-max').textContent = '기본 ' + g.base + ' + 체크 → 최고 ' + Grading.groupMax(g) + '점';
+    });
+  }
+
+  function renderLibrary() {
+    const sel = $('#librarySelect');
+    const presets = Grading.presets();
+    const lib = Store.libraryList();
+    sel.innerHTML =
+      `<optgroup label="기본 제공">${presets.map((p) => `<option value="preset:${esc(p.key)}">${esc(p.name)}</option>`).join('')}
+        <option value="blank">빈 기준에서 시작</option></optgroup>` +
+      (lib.length ? `<optgroup label="내 보관함">${lib.map((x, i) => `<option value="lib:${i}">${esc(x.name)}</option>`).join('')}</optgroup>` : '');
+  }
+
+  function libraryPick() {
+    const v = $('#librarySelect').value;
+    if (v === 'blank') return { rubric: Grading.blankRubric() };
+    if (v.startsWith('preset:')) return Grading.presets().find((p) => 'preset:' + p.key === v);
+    if (v.startsWith('lib:')) return Store.libraryList()[Number(v.slice(4))];
+    return null;
+  }
+
+  const AUTO_OPTS = Object.entries(Grading.AUTO_TYPES);
+
   function renderRubricEditor() {
-    const wrap = $('#rubricGroups');
-    wrap.innerHTML = state.rubric
+    const r = state.rubric;
+    $('#rubricName').value = r.name;
+    $('#rubricStep').value = r.step;
+    $('#rubricBase').value = r.baseScore || 0;
+    const offStep = (v) => Math.abs(v / r.step - Math.round(v / r.step)) > 1e-9;
+
+    $('#rubricGroups').innerHTML = r.groups
       .map(
-        (item, gi) => `
+        (g, gi) => `
       <div class="rubric-group" data-gi="${gi}">
         <div class="rubric-group-head">
-          <input type="text" data-field="name" value="${esc(item.name)}" placeholder="평가 영역 이름">
-          <span class="group-max">배점 합계 ${Grading.itemMax(item)}점</span>
-          <button class="btn ghost small" data-delgroup="${gi}">영역 삭제</button>
+          <input type="text" data-gfield="name" value="${esc(g.name)}" placeholder="평가 영역 이름">
+          <label class="inline">기본 점수 <input type="number" min="0" step="${r.step}" data-gfield="base" value="${g.base}" class="${offStep(g.base) ? 'bad' : ''}"></label>
+          <span class="group-max"></span>
+          <button class="btn ghost small" data-delgroup>영역 삭제</button>
         </div>
-        ${(item.checks || [])
+        <div class="requires-row">
+          <span>필수 조건(선택)</span>
+          <input type="text" data-gfield="reqPattern" value="${esc((g.requires && g.requires.pattern) || '')}" placeholder="정규식 — 제출물에 없으면 이 영역 체크를 모두 해제 (예: \\bclass\\s+\\w+)">
+          <input type="text" data-gfield="reqMessage" value="${esc((g.requires && g.requires.message) || '')}" placeholder="없을 때 표시할 근거">
+        </div>
+        <div class="check-row check-row-head"><span>체크 항목</span><span>배점</span><span>자동 감지</span><span>키워드 / 정규식</span><span>미충족 시 근거</span><span></span></div>
+        ${g.checks
           .map(
             (c, ci) => `
           <div class="check-row" data-ci="${ci}">
             <input type="text" data-cfield="label" value="${esc(c.label)}" placeholder="체크 항목 설명">
-            <input type="number" min="0" step="0.5" data-cfield="points" value="${c.points}" title="배점">
-            <select data-cfield="autoType" title="자동 감지 방식">
-              <option value="none" ${!c.auto || c.auto.type === 'none' ? 'selected' : ''}>자동감지 없음</option>
-              <option value="keyword" ${c.auto && c.auto.type === 'keyword' ? 'selected' : ''}>키워드</option>
-              <option value="regex" ${c.auto && c.auto.type === 'regex' ? 'selected' : ''}>정규식</option>
-            </select>
-            <input type="text" data-cfield="pattern" value="${esc((c.auto && c.auto.pattern) || '')}" placeholder="키워드(쉼표 구분) 또는 정규식">
-            <button class="del" data-delcheck="${ci}" title="이 체크 항목 삭제">✕</button>
+            <input type="number" min="0" step="${r.step}" data-cfield="points" value="${c.points}" class="${offStep(c.points) ? 'bad' : ''}" title="배점">
+            <select data-cfield="autoType">${AUTO_OPTS.map(([k, v]) => `<option value="${k}" ${c.auto.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
+            <input type="text" data-cfield="pattern" value="${esc(c.auto.pattern)}" placeholder="${c.auto.type === 'none' ? '(교사가 직접 판단)' : '쉼표로 구분'}" ${c.auto.type === 'none' ? 'disabled' : ''}>
+            <input type="text" data-cfield="reason" value="${esc(c.reason)}" placeholder="예: ~가 확인되지 않음">
+            <button class="del" data-delcheck title="이 체크 항목 삭제">✕</button>
           </div>`
           )
           .join('')}
-        <div class="rubric-group-foot">
-          <button class="btn ghost small" data-addcheck="${gi}">+ 체크 항목 추가</button>
-        </div>
+        <div class="rubric-group-foot"><button class="btn ghost small" data-addcheck>+ 체크 항목 추가</button></div>
       </div>`
       )
       .join('');
 
-    wrap.querySelectorAll('.rubric-group').forEach((groupEl) => {
+    $('#rubricGroups').querySelectorAll('.rubric-group').forEach((groupEl) => {
       const gi = Number(groupEl.dataset.gi);
-      groupEl.querySelector('[data-field="name"]').addEventListener('change', (e) => {
-        state.rubric[gi].name = e.target.value;
-        persist();
+      const g = () => state.rubric.groups[gi];
+      groupEl.querySelectorAll('[data-gfield]').forEach((input) => {
+        input.addEventListener('change', () => {
+          const f = input.dataset.gfield;
+          if (f === 'name') g().name = input.value;
+          else if (f === 'base') g().base = Number(input.value) || 0;
+          else {
+            const req = g().requires || { pattern: '', message: '' };
+            if (f === 'reqPattern') req.pattern = input.value.trim();
+            else req.message = input.value;
+            g().requires = req.pattern ? req : null;
+          }
+          onRubricEdited(f === 'base');
+        });
       });
       groupEl.querySelector('[data-delgroup]').addEventListener('click', () => {
-        state.rubric.splice(gi, 1);
-        renderRubricEditor();
-        persist();
+        if (!confirm('"' + g().name + '" 영역을 삭제할까요?')) return;
+        state.rubric.groups.splice(gi, 1);
+        onRubricEdited(true);
       });
       groupEl.querySelector('[data-addcheck]').addEventListener('click', () => {
-        state.rubric[gi].checks.push({ id: 'chk_' + Date.now(), label: '새 체크 항목', points: 5, auto: { type: 'none', pattern: '' } });
-        renderRubricEditor();
-        persist();
+        g().checks.push({ id: 'c_' + Date.now().toString(36), label: '새 체크 항목', points: state.rubric.step, auto: { type: 'none', pattern: '' }, reason: '' });
+        onRubricEdited(true);
       });
-      groupEl.querySelectorAll('.check-row').forEach((row) => {
+      groupEl.querySelectorAll('.check-row[data-ci]').forEach((row) => {
         const ci = Number(row.dataset.ci);
         row.querySelectorAll('[data-cfield]').forEach((input) => {
           input.addEventListener('change', () => {
-            const c = state.rubric[gi].checks[ci];
+            const c = g().checks[ci];
             const field = input.dataset.cfield;
-            if (field === 'points') c.points = Number(input.value);
+            if (field === 'points') c.points = Number(input.value) || 0;
             else if (field === 'label') c.label = input.value;
-            else if (field === 'autoType') { c.auto = c.auto || {}; c.auto.type = input.value; }
-            else if (field === 'pattern') { c.auto = c.auto || { type: 'none' }; c.auto.pattern = input.value; }
-            renderRubricEditor();
-            persist();
+            else if (field === 'autoType') c.auto.type = input.value;
+            else if (field === 'pattern') c.auto.pattern = input.value;
+            else if (field === 'reason') c.reason = input.value;
+            onRubricEdited(field === 'points' || field === 'autoType');
           });
         });
         row.querySelector('[data-delcheck]').addEventListener('click', () => {
-          state.rubric[gi].checks.splice(ci, 1);
-          renderRubricEditor();
-          persist();
+          g().checks.splice(ci, 1);
+          onRubricEdited(true);
         });
       });
     });
+
+    // 주의 신호
+    $('#flagRows').innerHTML = (r.flags || [])
+      .map(
+        (f, fi) => `
+      <div class="flag-row" data-fi="${fi}">
+        <select data-ffield="type">
+          <option value="missing" ${f.type === 'missing' ? 'selected' : ''}>없으면 경고</option>
+          <option value="match" ${f.type === 'match' ? 'selected' : ''}>있으면 경고</option>
+        </select>
+        <input type="text" data-ffield="pattern" value="${esc(f.pattern)}" placeholder="정규식">
+        <input type="text" data-ffield="message" value="${esc(f.message)}" placeholder="경고 문구">
+        <button class="del" data-delflag title="삭제">✕</button>
+      </div>`
+      )
+      .join('') || '<p class="muted" style="margin:4px 0">없음</p>';
+    $('#flagRows').querySelectorAll('.flag-row').forEach((row) => {
+      const f = state.rubric.flags[Number(row.dataset.fi)];
+      row.querySelectorAll('[data-ffield]').forEach((input) => {
+        input.addEventListener('change', () => { f[input.dataset.ffield] = input.value; onRubricEdited(false); });
+      });
+      row.querySelector('[data-delflag]').addEventListener('click', () => {
+        state.rubric.flags.splice(Number(row.dataset.fi), 1);
+        onRubricEdited(true);
+      });
+    });
+    renderRubricSummary();
   }
 
+  $('#rubricName').addEventListener('change', (e) => { state.rubric.name = e.target.value || '채점 기준'; onRubricEdited(false); });
+  $('#rubricStep').addEventListener('change', (e) => { state.rubric.step = Math.max(0.5, Number(e.target.value) || 1); onRubricEdited(true); });
+  $('#rubricBase').addEventListener('change', (e) => { state.rubric.baseScore = Number(e.target.value) || 0; onRubricEdited(false); });
   $('#addRubricGroupBtn').addEventListener('click', () => {
-    state.rubric.push({ id: 'group_' + Date.now(), name: '새 평가 영역', checks: [] });
+    state.rubric.groups.push({ id: 'g_' + Date.now().toString(36), name: '새 평가 영역', base: 0, requires: null, checks: [] });
+    onRubricEdited(true);
+  });
+  $('#addFlagBtn').addEventListener('click', () => {
+    state.rubric.flags.push({ type: 'match', pattern: '', message: '' });
     renderRubricEditor();
-    persist();
   });
 
-  $('#regradeBtn').addEventListener('click', () => {
-    let n = 0;
-    for (const s of state.students) {
-      if (s.confirmed) continue;
-      applyAutoChecks(s);
-      n++;
-    }
-    renderStudentList();
-    const sel = state.students.find((x) => x.userId === state.selectedUserId);
-    if (sel) renderGradingPanel(sel);
+  function regradeClick() {
+    if (!state.loaded) { toast('먼저 과제의 제출물을 불러오세요.'); return; }
+    const { n, kept } = regradeUnconfirmed();
     persist();
-    toast(n + '명 재채점 완료 (확인 완료된 학생은 유지)');
+    renderAllGrading();
+    toast(n + '명 재채점 완료' + (kept ? ' (확인 완료된 ' + kept + '명은 유지)' : ''));
+  }
+  $('#regradeBtn').addEventListener('click', regradeClick);
+  $('#regradeBtn2').addEventListener('click', regradeClick);
+
+  // 보관함
+  $('#libraryApplyBtn').addEventListener('click', () => {
+    const item = libraryPick();
+    if (!item) return;
+    toast(applyRubric(item.rubric), 5000);
+  });
+  $('#librarySaveBtn').addEventListener('click', () => {
+    const name = prompt('보관함에 저장할 이름', state.rubric.name);
+    if (!name) return;
+    if (Store.libraryList().some((x) => x.name === name) && !confirm('같은 이름이 있습니다. 덮어쓸까요?')) return;
+    state.rubric.name = name;
+    Store.librarySave(clone(state.rubric));
+    onRubricEdited(false);
+    renderLibrary();
+    toast('보관함에 저장했습니다 — 다른 과목·과제에서도 불러와 쓸 수 있습니다');
+  });
+  $('#libraryDeleteBtn').addEventListener('click', () => {
+    const v = $('#librarySelect').value;
+    if (!v.startsWith('lib:')) { toast('기본 제공 기준은 삭제할 수 없습니다'); return; }
+    const item = Store.libraryList()[Number(v.slice(4))];
+    if (!item || !confirm('"' + item.name + '"을(를) 보관함에서 삭제할까요?')) return;
+    Store.libraryDelete(item.name);
+    renderLibrary();
+  });
+  $('#exportRubricXlsxBtn').addEventListener('click', () => RubricImport.exportXlsx(state.rubric));
+  $('#exportRubricJsonBtn').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(state.rubric, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '채점기준_' + state.rubric.name.replace(/[\\/:*?"<>|]/g, '_').slice(0, 40) + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  });
+
+  // 업로드 → 자동 적용
+  async function handleRubricFile(file) {
+    const drop = $('#rubricDrop');
+    const status = $('#importStatus');
+    const notes = $('#importNotes');
+    drop.classList.add('busy');
+    notes.classList.add('hidden');
+    status.textContent = '"' + file.name + '" 읽는 중… (표가 아닌 문서·이미지는 AI가 읽어서 10~40초 걸립니다)';
+    try {
+      const res = await RubricImport.importFile(file, { stepHint: state.rubric.step });
+      const msg = applyRubric(res.rubric);
+      status.textContent = '✅ ' + msg;
+      const bad = Grading.offStep(state.rubric);
+      const lines = [];
+      if (res.via === 'ai') lines.push('AI가 읽어 체크리스트로 바꾼 기준입니다. 아래 항목·배점·키워드가 원래 채점기준표와 맞는지 한 번 확인해 주세요.');
+      if (res.notes) lines.push('AI 메모: ' + res.notes);
+      if (bad.length) lines.push('배점 간격(' + state.rubric.step + '점)에 맞지 않는 항목: ' + bad.join(', '));
+      if (lines.length) { notes.innerHTML = lines.map(esc).join('<br>'); notes.classList.remove('hidden'); }
+      toast(msg, 5000);
+    } catch (e) {
+      console.error(e);
+      status.textContent = '❌ ' + e.message;
+      if (/API 키/.test(e.message)) $('#geminiKeyInput').focus();
+    } finally {
+      drop.classList.remove('busy');
+    }
+  }
+  $('#rubricFileInput').addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    if (f) handleRubricFile(f);
+  });
+  const drop = $('#rubricDrop');
+  drop.addEventListener('click', (e) => { if (e.target.tagName !== 'INPUT') $('#rubricFileInput').click(); });
+  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    drop.classList.remove('over');
+    const f = e.dataTransfer.files[0];
+    if (f) handleRubricFile(f);
+  });
+  // 캡처한 채점기준표 이미지를 바로 붙여넣기(Ctrl+V)
+  document.addEventListener('paste', (e) => {
+    if ($('#tabRubric').classList.contains('hidden')) return;
+    if (/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
+    const item = Array.from(e.clipboardData.items).find((it) => it.kind === 'file');
+    if (item) { const f = item.getAsFile(); if (f) handleRubricFile(new File([f], f.name || '붙여넣은_이미지.png', { type: f.type })); }
+  });
+
+  // Gemini 키
+  $('#geminiKeyInput').addEventListener('focus', (e) => { if (e.target.value.startsWith('••')) e.target.value = ''; });
+  $('#geminiKeySaveBtn').addEventListener('click', () => {
+    const v = $('#geminiKeyInput').value.trim();
+    if (v.startsWith('••')) return;
+    Gemini.setKey(v);
+    $('#geminiKeyInput').value = v ? '••••••••(저장됨)' : '';
+    toast(v ? 'API 키를 이 브라우저에 저장했습니다' : 'API 키를 지웠습니다');
   });
 
   // ---------------- 학생 목록 ----------------
@@ -333,56 +613,101 @@
       row.addEventListener('click', () => {
         state.selectedUserId = row.dataset.uid;
         renderStudentList();
-        const s = state.students.find((x) => x.userId === state.selectedUserId);
+        const s = selectedStudent();
         renderDocViewer(s);
         renderGradingPanel(s);
       });
     });
   }
 
-  // ---------------- 가운데: 제출한 과제 보기 ----------------
+  // ---------------- 가운데: 제출한 파일 그대로 보기 ----------------
+  // 구글 드라이브의 미리보기 화면을 그대로 띄운다(pdf, docx, pptx, hwp, 이미지, 코드 등).
+  function previewUrl(f) {
+    const id = encodeURIComponent(f.id);
+    const m = f.mimeType || '';
+    if (m === 'application/vnd.google-apps.document') return 'https://docs.google.com/document/d/' + id + '/preview';
+    if (m === 'application/vnd.google-apps.presentation') return 'https://docs.google.com/presentation/d/' + id + '/preview';
+    if (m === 'application/vnd.google-apps.spreadsheet') return 'https://docs.google.com/spreadsheets/d/' + id + '/preview';
+    return 'https://drive.google.com/file/d/' + id + '/preview';
+  }
+
   function renderDocViewer(s) {
     const el = $('#docViewer');
-    if (!s) { el.innerHTML = '<p class="muted">왼쪽 목록에서 학생을 선택하세요.</p>'; return; }
+    if (!s) { el.innerHTML = '<p class="muted">왼쪽 목록에서 학생을 선택하세요.</p>'; el.dataset.key = ''; return; }
 
-    const fileChips =
-      s.files
-        .map(
-          (f) => `
-        <span class="file-chip">📎 ${esc(f.name)}
-          ${f.webViewLink ? `<a href="${esc(f.webViewLink)}" target="_blank" rel="noopener">새 창에서 열기</a>` : f.url ? `<a href="${esc(f.url)}" target="_blank" rel="noopener">새 창에서 열기</a>` : ''}
-          <button data-dl="${esc(f.id)}">다운로드</button>
-        </span>`
-        )
-        .join('') +
-      s.links.map((u) => `<span class="file-chip">🔗 <a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a></span>`).join('');
+    const idx = Math.min(state.viewIdx[s.userId] || 0, Math.max(0, s.files.length - 1));
+    const f = s.files[idx];
+    const key = s.userId + ':' + (f ? f.id + ':' + (f.mimeType || '') : '-');
 
-    el.innerHTML = `
+    const head = `
       <div class="detail-head">
         <h3>${esc(s.name)}</h3>
         <span class="status ${statusClass(s.status)}">${esc(s.status)}</span>
         ${s.resubmitted ? '<span class="muted">🔄 재제출됨</span>' : ''}
-        <button class="btn ghost small" id="reextractBtn" style="margin-left:auto">다시 추출</button>
       </div>
       ${s.flags && s.flags.length ? `<div class="flag-banner">⚠️ ${s.flags.map(esc).join('<br>⚠️ ')}</div>` : ''}
-      <div>${fileChips || '<span class="muted">제출 파일 없음</span>'}</div>
-      <div class="doc-status">추출 상태: ${esc(s.extractStatus || '')}</div>
-      <div class="doc-body">${esc(s.text) || '(추출된 내용 없음)'}</div>
-    `;
+      <div class="file-tabs">
+        ${s.files
+          .map(
+            (x, i) => `
+          <span class="file-chip ${i === idx ? 'active' : ''}">
+            <button class="file-name" data-view="${i}" title="가운데에서 보기">📎 ${esc(x.name)}</button>
+            <a href="${esc(x.webViewLink || x.url || previewUrl(x))}" target="_blank" rel="noopener">새 창에서 열기</a>
+            <button data-dl="${esc(x.id)}">다운로드</button>
+          </span>`
+          )
+          .join('')}
+        ${s.links.map((u) => `<span class="file-chip">🔗 <a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a></span>`).join('')}
+        ${!s.files.length && !s.links.length && !s.answer ? '<span class="muted">제출 파일 없음</span>' : ''}
+      </div>
+      ${s.answer ? `<div class="answer-box"><b>단답형 답변</b><br>${esc(s.answer)}</div>` : ''}`;
 
-    const reBtn = el.querySelector('#reextractBtn');
+    const extra = `
+      <details class="extract-details">
+        <summary>자동 채점에 쓴 추출 텍스트 (추출 상태: ${esc(s.extractStatus || '')})</summary>
+        <button class="btn ghost small" data-reextract>다시 추출·채점</button>
+        <div class="doc-body">${esc(s.text) || '(추출된 내용 없음)'}</div>
+      </details>`;
+
+    if (el.dataset.key === key) {
+      // 같은 파일을 보고 있으면 iframe은 그대로 두고(다시 로딩 방지) 나머지만 갱신
+      const open = el.querySelector('.extract-details') && el.querySelector('.extract-details').open;
+      el.querySelector('#dvHead').innerHTML = head;
+      el.querySelector('#dvExtra').innerHTML = extra;
+      if (open) el.querySelector('.extract-details').open = true;
+    } else {
+      el.dataset.key = key;
+      let frame = '';
+      if (f && f.mimeType) {
+        frame = `<iframe class="doc-frame" src="${esc(previewUrl(f))}" allow="autoplay" title="${esc(f.name)}"></iframe>
+          <p class="muted frame-hint">미리보기가 보이지 않으면 위의 <b>새 창에서 열기</b>를 누르세요. (브라우저에 학교 구글 계정이 로그인되어 있어야 합니다)</p>`;
+      } else if (f && f.metaError) {
+        frame = `<p class="muted">파일 정보를 불러오지 못했습니다: ${esc(f.metaError)}</p>`;
+      } else if (f) {
+        frame = '<p class="muted">파일 불러오는 중…</p>';
+        ensureFileMeta(f).then(() => { if (state.selectedUserId === s.userId) renderDocViewer(s); });
+      }
+      el.innerHTML = `<div id="dvHead"></div><div id="dvFrame">${frame}</div><div id="dvExtra"></div>`;
+      el.querySelector('#dvHead').innerHTML = head;
+      el.querySelector('#dvExtra').innerHTML = extra;
+    }
+
+    el.querySelectorAll('[data-view]').forEach((btn) => {
+      btn.addEventListener('click', () => { state.viewIdx[s.userId] = Number(btn.dataset.view); renderDocViewer(s); });
+    });
+    el.querySelectorAll('[data-dl]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const file = s.files.find((x) => x.id === btn.dataset.dl);
+        await ensureFileMeta(file);
+        try { await Api.downloadToDisk(file); } catch (e) { toast('다운로드 실패: ' + e.message); }
+      });
+    });
+    const reBtn = el.querySelector('[data-reextract]');
     if (reBtn) reBtn.addEventListener('click', async () => {
       toast('다시 추출 중…');
       await processStudent(s);
       persist();
-      toast('추출 완료');
-    });
-    el.querySelectorAll('[data-dl]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const f = s.files.find((x) => x.id === btn.dataset.dl);
-        await ensureFileMeta(f);
-        try { await Api.downloadToDisk(f); } catch (e) { toast('다운로드 실패: ' + e.message); }
-      });
+      toast('추출·자동 채점 완료');
     });
   }
 
@@ -392,32 +717,50 @@
     if (!s) { el.innerHTML = '<p class="muted">왼쪽 목록에서 학생을 선택하세요.</p>'; return; }
 
     s.checks = s.checks || {};
-    const hasClass = /\bclass\s+\w+/.test(s.text || '');
-    const groupsHtml = state.rubric
-      .map((item) => {
-        const gScore = Grading.itemScore(item, s.checks);
-        const blocked = item.requiresClass && !hasClass;
-        const checksHtml = (item.checks || [])
-          .map(
-            (c) => `
-          <label class="check-item">
-            <input type="checkbox" data-check="${esc(c.id)}" ${s.checks[c.id] ? 'checked' : ''}>
-            <span class="c-label">${esc(c.label)}</span>
-            <span class="c-points">${c.points}점</span>
-          </label>`
-          )
+    s.reasonEdits = s.reasonEdits || {};
+    const absent = s.status === '미제출';
+    const groupsHtml = state.rubric.groups
+      .map((g) => {
+        const blocked = Grading.groupBlocked(g, s.text);
+        const checksHtml = g.checks
+          .map((c) => {
+            const on = !!s.checks[c.id];
+            let sub = '';
+            if (on) {
+              const ex = Grading.explain(g, c, s.text);
+              sub = `<div class="evidence">✓ ${ex.met ? esc(ex.reason) : '선생님이 직접 체크'}</div>`;
+            } else if (!absent) {
+              const edited = s.reasonEdits[c.id] != null;
+              sub = `
+                <div class="reason-box">
+                  <div class="reason-head">미충족 근거 ${edited ? '<span class="edited">수정함</span><button class="link-btn" data-resetreason="' + esc(c.id) + '">자동 근거로 되돌리기</button>' : ''}</div>
+                  <textarea data-reason="${esc(c.id)}" rows="2">${esc(Grading.reasonFor(g, c, s))}</textarea>
+                </div>`;
+            }
+            return `
+          <div class="check-item ${on ? 'on' : 'unmet'}">
+            <label class="check-line">
+              <input type="checkbox" data-check="${esc(c.id)}" ${on ? 'checked' : ''} ${absent ? 'disabled' : ''}>
+              <span class="c-label">${esc(c.label)}</span>
+              <span class="c-points">+${c.points}</span>
+            </label>
+            ${sub}
+          </div>`;
+          })
           .join('');
         return `
         <div class="grade-group">
-          <div class="grade-group-head"><span>${esc(item.name)}</span><span class="g-score">${gScore} / ${Grading.itemMax(item)}점</span></div>
-          ${blocked ? '<p class="flag-note">⚠ class 없이 구현되어 자동으로 모두 미체크 처리됨 — AI 작성 의심. 필요하면 직접 체크하세요.</p>' : ''}
-          ${checksHtml || '<p class="muted" style="font-size:12px">체크 항목이 없습니다. 위 채점 기준에서 추가하세요.</p>'}
+          <div class="grade-group-head"><span>${esc(g.name)}</span><span class="g-score">${absent ? 0 : Grading.groupScore(g, s.checks)} / ${Grading.groupMax(g)}점</span></div>
+          ${g.base ? `<div class="base-note">기본 ${g.base}점 포함</div>` : ''}
+          ${blocked ? `<p class="flag-note">⚠ 필수 조건 미충족으로 자동 채점에서 모두 미체크 — ${esc(g.requires.message || '')}. 필요하면 직접 체크하세요.</p>` : ''}
+          ${checksHtml || '<p class="muted" style="font-size:12px">체크 항목이 없습니다. "채점 기준" 탭에서 추가하세요.</p>'}
         </div>`;
       })
       .join('');
 
     el.innerHTML = `
       <h3 style="margin-top:0">${esc(s.name)} 채점</h3>
+      ${absent ? '<p class="muted">미제출 — 0점</p>' : ''}
       ${groupsHtml}
       <div class="total-line">
         합계 <span id="totalScore">${Grading.total(state.rubric, s.checks, s.status)}</span>점
@@ -431,6 +774,20 @@
         s.checks[cb.dataset.check] = cb.checked;
         renderGradingPanel(s);
         renderStudentList();
+        persist();
+      });
+    });
+    el.querySelectorAll('[data-reason]').forEach((ta) => {
+      ta.addEventListener('input', () => {
+        s.reasonEdits[ta.dataset.reason] = ta.value;
+        persist();
+      });
+      ta.addEventListener('change', () => renderGradingPanel(s)); // "수정함" 표시 갱신
+    });
+    el.querySelectorAll('[data-resetreason]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        delete s.reasonEdits[btn.dataset.resetreason];
+        renderGradingPanel(s);
         persist();
       });
     });
@@ -448,7 +805,7 @@
   // ---------------- 이벤트 바인딩 ----------------
   $('#signInBtn').addEventListener('click', () => Auth.signIn());
   $('#signOutBtn').addEventListener('click', () => Auth.signOut());
-  $('#courseSelect').addEventListener('change', (e) => loadCourseWorks(e.target.value));
+  $('#courseSelect').addEventListener('change', (e) => onCourseChange(e.target.value));
   $('#loadBtn').addEventListener('click', loadSubmissions);
   $('#exportCsvBtn').addEventListener('click', () => Store.exportCsv(state.rubric, state.students, { courseWorkTitle: state.courseWorkTitle }));
   $('#exportJsonBtn').addEventListener('click', () => Store.exportJson(state.courseId, state.courseWorkId, { courseName: state.courseName, courseWorkTitle: state.courseWorkTitle }));
@@ -460,6 +817,7 @@
       const meta = await Store.importJsonFile(file);
       toast('가져오기 완료. 같은 수업·과제를 다시 "제출물 불러오기" 하면 반영됩니다.');
       if (state.courseId === meta.courseId && state.courseWorkId === meta.courseWorkId) {
+        state.rubricTouched = false;
         await loadSubmissions();
       }
     } catch (err) {
@@ -468,6 +826,11 @@
       e.target.value = '';
     }
   });
+
+  let initialTab = 'grade';
+  try { initialTab = localStorage.getItem('grader:tab') || 'grade'; } catch (e) {}
+  showTab(initialTab);
+  renderRubricTab();
 
   window.addEventListener('load', () => {
     Auth.init(onAuthChange);

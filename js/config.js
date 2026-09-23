@@ -11,4 +11,9 @@ const CONFIG = {
     'https://www.googleapis.com/auth/classroom.rosters.readonly',
     'https://www.googleapis.com/auth/drive.readonly',
   ].join(' '),
+
+  // 채점 기준 파일(pdf, hwp/hwpx, 이미지 등)을 읽어 체크리스트로 바꿀 때 쓰는 제미나이 모델.
+  // 이 이름이 폐기되면 쓸 수 있는 flash 모델을 자동으로 찾아 씁니다.
+  // API 키는 여기 넣지 말고 앱의 "채점 기준" 탭에서 입력하세요(브라우저에만 저장됨).
+  GEMINI_MODEL: 'gemini-3.5-flash',
 };

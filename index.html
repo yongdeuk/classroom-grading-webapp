@@ -30,42 +30,110 @@
       </div>
     </section>
 
-    <section class="panel hidden" id="rubricPanel">
-      <div class="panel-head">
-        <h2>채점 기준 (체크리스트)</h2>
-        <div>
-          <button id="addRubricGroupBtn" class="btn ghost small">+ 평가 영역 추가</button>
-          <button id="regradeBtn" class="btn primary small">전체 자동 재채점</button>
-        </div>
-      </div>
-      <div id="rubricGroups"></div>
-      <p class="hint">
-        각 평가 영역은 여러 개의 체크 항목으로 이뤄지고, <b>체크하면 그 배점만큼 점수가 더해집니다.</b>
-        체크 항목에 "자동 감지"를 키워드/정규식으로 설정하면 제출물 텍스트를 보고 미리 체크해 두지만(자동 채점 초안),
-        언제든 오른쪽 채점 화면에서 직접 켜고 끌 수 있습니다. 최종 판단은 선생님이 해주세요.
-      </p>
-    </section>
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="grade">채점</button>
+      <button class="tab-btn" data-tab="rubric">채점 기준</button>
+      <span id="rubricBadge" class="rubric-badge"></span>
+    </nav>
 
-    <section class="panel hidden" id="workArea">
-      <div class="panel-head">
-        <h2 id="workTitle">제출 현황</h2>
-        <div>
-          <button id="exportCsvBtn" class="btn ghost small">CSV 내보내기</button>
-          <button id="exportJsonBtn" class="btn ghost small">백업(JSON)</button>
-          <button id="importJsonBtn" class="btn ghost small">가져오기(JSON)</button>
-          <input type="file" id="importJsonInput" accept="application/json" class="hidden">
+    <!-- ============ 채점 탭 ============ -->
+    <div id="tabGrade">
+      <section class="panel" id="gradeEmpty">
+        <p class="muted" style="margin:0">위에서 수업·과제를 고르고 <b>제출물 불러오기</b>를 누르세요.
+          채점 기준은 <b>채점 기준</b> 탭에서 파일을 올리거나 고칠 수 있습니다.</p>
+      </section>
+      <section class="panel hidden" id="workArea">
+        <div class="panel-head">
+          <h2 id="workTitle">제출 현황</h2>
+          <div>
+            <button id="regradeBtn2" class="btn ghost small">전체 자동 재채점</button>
+            <button id="exportCsvBtn" class="btn ghost small">CSV 내보내기</button>
+            <button id="exportJsonBtn" class="btn ghost small">백업(JSON)</button>
+            <button id="importJsonBtn" class="btn ghost small">가져오기(JSON)</button>
+            <input type="file" id="importJsonInput" accept="application/json" class="hidden">
+          </div>
         </div>
-      </div>
-      <div class="split3">
-        <div class="student-list" id="studentList"></div>
-        <div class="doc-viewer" id="docViewer">
-          <p class="muted">왼쪽 목록에서 학생을 선택하세요.</p>
+        <div class="split3">
+          <div class="student-list" id="studentList"></div>
+          <div class="doc-viewer" id="docViewer">
+            <p class="muted">왼쪽 목록에서 학생을 선택하세요.</p>
+          </div>
+          <div class="grading-panel" id="gradingPanel">
+            <p class="muted">왼쪽 목록에서 학생을 선택하세요.</p>
+          </div>
         </div>
-        <div class="grading-panel" id="gradingPanel">
-          <p class="muted">왼쪽 목록에서 학생을 선택하세요.</p>
+      </section>
+    </div>
+
+    <!-- ============ 채점 기준 탭 ============ -->
+    <div id="tabRubric" class="hidden">
+      <section class="panel">
+        <div class="panel-head"><h2>채점 기준 파일 올리기</h2></div>
+        <div id="rubricDrop" class="dropzone">
+          <input type="file" id="rubricFileInput" class="hidden">
+          <div class="drop-title">여기에 채점기준표 파일을 끌어다 놓거나 클릭해서 고르세요</div>
+          <div class="muted">PDF · 한글(hwp, hwpx) · 워드 · 파워포인트 · 엑셀/CSV · 사진·캡처 이미지 등 어떤 파일이든 됩니다.
+            캡처한 이미지는 이 화면에서 <b>Ctrl+V</b>로 바로 붙여넣어도 됩니다.<br>
+            올리면 자동으로 읽어 체크리스트로 바꾸고 <b>바로 적용</b>합니다(확인 완료하지 않은 학생은 자동 재채점).</div>
         </div>
-      </div>
-    </section>
+        <div id="importStatus" class="import-status"></div>
+        <div id="importNotes" class="note-banner hidden"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>기준 보관함</h2></div>
+        <div class="row">
+          <select id="librarySelect"></select>
+          <button id="libraryApplyBtn" class="btn primary small">이 기준 적용</button>
+          <button id="librarySaveBtn" class="btn ghost small">현재 기준을 보관함에 저장</button>
+          <button id="libraryDeleteBtn" class="btn ghost small">보관함에서 삭제</button>
+          <span class="spacer"></span>
+          <button id="exportRubricXlsxBtn" class="btn ghost small">엑셀로 받기</button>
+          <button id="exportRubricJsonBtn" class="btn ghost small">JSON으로 받기</button>
+        </div>
+        <p class="hint">보관함에 저장한 기준은 다른 과목·과제에서도 골라 쓸 수 있습니다. 같은 수업의 새 과제를 열면 그 수업에서 마지막으로 쓴 기준으로 시작합니다.
+          "엑셀로 받기"한 파일을 고쳐서 다시 올리면 AI 없이 그대로 적용됩니다.</p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>현재 채점 기준</h2>
+          <div>
+            <button id="addRubricGroupBtn" class="btn ghost small">+ 평가 영역 추가</button>
+            <button id="regradeBtn" class="btn primary small">전체 자동 재채점</button>
+          </div>
+        </div>
+        <div class="row rubric-meta">
+          <label>기준 이름 <input type="text" id="rubricName" style="min-width:320px"></label>
+          <label>배점 간격 <input type="number" id="rubricStep" min="0.5" step="0.5" style="width:80px"></label>
+          <label>합계 최저점(선택) <input type="number" id="rubricBase" min="0" style="width:90px"></label>
+        </div>
+        <div id="rubricSummary" class="rubric-summary"></div>
+        <div id="rubricGroups"></div>
+        <p class="hint">
+          평가 영역 점수 = <b>기본 점수</b>(그 영역의 최저 수준) + <b>체크한 항목의 배점</b>. 예) 기본 20 + 5점 체크 4개 → 20/25/30/35/40점.
+          "자동 감지"에 키워드나 정규식을 넣으면 제출물 텍스트를 보고 미리 체크해 두고, 체크되지 않은 항목에는 "미충족 시 근거"가 채점 화면에 표시됩니다.
+          키워드·정규식을 고친 뒤에는 <b>전체 자동 재채점</b>을 눌러 주세요. 최종 판단은 선생님이 해 주세요.
+        </p>
+
+        <h3 class="sub-h">주의 신호 <span class="muted">(점수에는 영향 없이 학생 이름 옆 ⚠️와 경고로만 표시)</span></h3>
+        <div id="flagRows"></div>
+        <button id="addFlagBtn" class="btn ghost small">+ 주의 신호 추가</button>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>AI 설정 (채점 기준 파일 읽기용)</h2></div>
+        <div class="row">
+          <label>Gemini API 키
+            <input type="password" id="geminiKeyInput" style="min-width:340px" autocomplete="off" placeholder="AIza…">
+          </label>
+          <button id="geminiKeySaveBtn" class="btn ghost small">저장</button>
+        </div>
+        <p class="hint">PDF·한글·이미지 등 표 형식이 아닌 채점기준표는 구글 Gemini가 읽어서 체크리스트로 바꿉니다.
+          키는 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>에서 무료로 만들 수 있고,
+          <b>이 브라우저에만 저장</b>됩니다(서버·저장소로 보내지 않음). 엑셀/CSV/JSON 기준 파일은 키 없이도 됩니다.</p>
+      </section>
+    </div>
   </main>
 
   <div id="toast" class="toast hidden"></div>
@@ -76,6 +144,8 @@
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/cfb@1.2.2/dist/cfb.min.js"></script>
   <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
   </script>
@@ -85,6 +155,8 @@
   <script src="js/api.js"></script>
   <script src="js/extract.js"></script>
   <script src="js/grading.js"></script>
+  <script src="js/gemini.js"></script>
+  <script src="js/rubric-import.js"></script>
   <script src="js/store.js"></script>
   <script src="js/app.js"></script>
 </body>

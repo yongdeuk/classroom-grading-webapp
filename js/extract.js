@@ -113,5 +113,5 @@ const Extract = (() => {
     return { text: parts.join('\n\n'), status };
   }
 
-  return { extractSubmission };
+  return { extractSubmission, pptxText };
 })();

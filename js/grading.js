@@ -1,106 +1,225 @@
-// 채점 기준(루브릭). 각 채점 항목(item)은 여러 개의 "체크리스트 항목(check)"으로 이뤄지고,
-// 체크할 때마다 그 체크의 배점만큼 점수가 더해진다. 체크는 자동으로 미리 감지해 두지만
-// 언제든 교사가 직접 켜고 끌 수 있다.
+// 채점 기준(루브릭) 모델과 자동 채점.
+//
+// 루브릭 = { name, step, baseScore, groups: [...], flags: [...] }
+//  - 평가 영역(group)은 "기본 점수(base, 그 영역의 최저 밴드)" + 여러 개의 체크 항목(check)으로 이뤄진다.
+//    체크할 때마다 그 배점만큼 더해져서, 예) 기본 20 + 5점 체크 4개 → 20/25/30/35/40 밴드가 된다.
+//  - step: 배점 간격(정보과학은 5점). 배점이 간격에 안 맞으면 편집 화면에서 경고한다.
+//  - baseScore: 제출한 학생의 합계 최저점(선택). 0이면 사용하지 않음.
+//  - flags: 제출물에서 교사가 눈여겨봐야 할 신호(점수에는 영향 없음, 경고만 표시).
+//  - group.requires: 이 조건(정규식)이 제출물에 없으면 그 영역 체크를 자동으로 전부 해제.
+// 과목에 상관없이 쓸 수 있도록 과목 전용 규칙은 모두 루브릭 데이터 안에 둔다.
 const Grading = (() => {
-  const BASE_SCORE = 40; // 기본점수(제출한 학생의 합계 최저점 — 미제출자에게는 적용하지 않음)
+  const AUTO_TYPES = { none: '직접 확인', keyword: '키워드(하나라도)', keywordAll: '키워드(모두)', regex: '정규식' };
 
-  const DEFAULT_RUBRIC = [
-    {
-      id: 'design', name: '자료구조 및 함수 설계의 적절성',
-      checks: [
-        { id: 'design_s_push', label: '스택: 삽입(push) 연산 설계', points: 7, auto: { type: 'keyword', pattern: 'push, 삽입, 등록' } },
-        { id: 'design_s_pop', label: '스택: 삭제(pop) 연산 설계', points: 7, auto: { type: 'keyword', pattern: 'pop, 삭제, 취소, 복구' } },
-        { id: 'design_s_peek', label: '스택: 조회(peek) 연산 설계', points: 6, auto: { type: 'keyword', pattern: 'peek, top, 조회, 최상단' } },
-        { id: 'design_q_enq', label: '큐: 삽입(enqueue) 연산 설계', points: 7, auto: { type: 'keyword', pattern: 'enqueue, 삽입, 접수' } },
-        { id: 'design_q_deq', label: '큐: 삭제(dequeue) 연산 설계', points: 7, auto: { type: 'keyword', pattern: 'dequeue, 삭제, 처리' } },
-        { id: 'design_q_peek', label: '큐: 조회(front) 연산 설계', points: 6, auto: { type: 'keyword', pattern: 'front, peek, 조회, 맨앞' } },
-      ],
-    },
-    {
-      id: 'impl', name: '함수를 활용한 스택·큐 연산 구현',
-      // class 없이 구현하면(교과서의 class Stack/Queue를 변경하라는 요구사항 위반, AI 작성 의심)
-      // 이 영역 체크를 자동으로 전부 해제한다 — 아래 suggestChecks 참고.
-      requiresClass: true,
-      checks: [
-        { id: 'impl_s_push', label: '스택 push 함수 구현', points: 6, auto: { type: 'regex', pattern: 'def\\s+push' } },
-        { id: 'impl_s_pop', label: '스택 pop 함수 구현', points: 6, auto: { type: 'regex', pattern: 'def\\s+pop' } },
-        { id: 'impl_s_peek', label: '스택 peek/top 함수 구현', points: 3, auto: { type: 'regex', pattern: 'def\\s+(peek|top)' } },
-        { id: 'impl_q_enq', label: '큐 enqueue 함수 구현', points: 6, auto: { type: 'regex', pattern: 'def\\s+enqueue' } },
-        { id: 'impl_q_deq', label: '큐 dequeue 함수 구현', points: 6, auto: { type: 'regex', pattern: 'def\\s+dequeue' } },
-        { id: 'impl_q_peek', label: '큐 peek/front 함수 구현', points: 3, auto: { type: 'regex', pattern: 'def\\s+(peek|front)' } },
-      ],
-    },
-    {
-      id: 'exc', name: '예외 상황 처리 및 프로그램 검증',
-      checks: [
-        { id: 'exc_overflow', label: '오버플로우 예외 처리', points: 10, auto: { type: 'keyword', pattern: 'overflow, 오버플로우, 가득' } },
-        { id: 'exc_underflow', label: '언더플로우 예외 처리', points: 10, auto: { type: 'keyword', pattern: 'underflow, 언더플로우, 비어' } },
-        { id: 'exc_test', label: '실행 결과(출력) 검증 확인', points: 10, auto: { type: 'regex', pattern: 'print\\s*\\(' } },
-      ],
-    },
-  ];
-
-  function itemMax(item) {
-    return (item.checks || []).reduce((s, c) => s + Number(c.points || 0), 0);
-  }
-  function rubricMax(rubric) {
-    return rubric.reduce((s, it) => s + itemMax(it), 0);
+  function hash(str) {
+    let h = 5381;
+    for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+    return (h >>> 0).toString(36);
   }
 
-  function evalAuto(auto, text) {
-    if (!auto || !auto.type || auto.type === 'none' || !text) return false;
-    if (auto.type === 'keyword') {
-      const kws = (auto.pattern || '').split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
-      if (!kws.length) return false;
-      const low = text.toLowerCase();
-      return kws.some((k) => low.includes(k.toLowerCase()));
+  // ---- 기본 제공 기준 ----
+  const INFO_SCIENCE_STACK_QUEUE = {
+    name: '정보과학 — 함수를 활용한 스택·큐 프로그램 구현 (1차 수행평가)',
+    step: 5,
+    baseScore: 0,
+    groups: [
+      {
+        id: 'design', name: '자료구조 및 함수 설계의 적절성', base: 20,
+        checks: [
+          { id: 'design_s_io', label: '스택: 삽입(push)·삭제(pop) 연산 설계', points: 5, auto: { type: 'keywordAll', pattern: 'push, pop' }, reason: '스택의 삽입·삭제 연산 설계가 확인되지 않음' },
+          { id: 'design_s_peek', label: '스택: 조회(peek)·상태 확인(isEmpty) 설계', points: 5, auto: { type: 'regex', pattern: '(peek|top|조회)[\\s\\S]*(is_?empty|비어)|(is_?empty|비어)[\\s\\S]*(peek|top|조회)' }, reason: '스택의 조회·상태 확인 연산 설계가 확인되지 않음' },
+          { id: 'design_q_io', label: '큐: 삽입(enqueue)·삭제(dequeue) 연산 설계', points: 5, auto: { type: 'keywordAll', pattern: 'enqueue, dequeue' }, reason: '큐의 삽입·삭제 연산 설계가 확인되지 않음' },
+          { id: 'design_q_peek', label: '큐: 조회(front/peek)·상태 확인 설계', points: 5, auto: { type: 'regex', pattern: '(front|peek|조회)[\\s\\S]*(is_?empty|비어)|(is_?empty|비어)[\\s\\S]*(front|peek|조회)' }, reason: '큐의 조회·상태 확인 연산 설계가 확인되지 않음' },
+        ],
+      },
+      {
+        id: 'impl', name: '함수를 활용한 스택·큐 연산 구현', base: 10,
+        requires: { pattern: '\\bclass\\s+\\w+', message: 'class 없이 구현됨 — 교과서의 class Stack/Queue를 변경하라는 요구사항 미준수(AI 작성 의심)' },
+        checks: [
+          { id: 'impl_s_io', label: '스택 push·pop 함수 구현', points: 5, auto: { type: 'regex', pattern: '(?=[\\s\\S]*def\\s+push)(?=[\\s\\S]*def\\s+pop)' }, reason: 'push 또는 pop 함수 정의(def)가 없음' },
+          { id: 'impl_s_peek', label: '스택 peek·isEmpty 함수 구현', points: 5, auto: { type: 'regex', pattern: '(?=[\\s\\S]*def\\s+(peek|top))(?=[\\s\\S]*def\\s+is_?empty)' }, reason: 'peek 또는 isEmpty 함수 정의(def)가 없음' },
+          { id: 'impl_q_io', label: '큐 enqueue·dequeue 함수 구현', points: 5, auto: { type: 'regex', pattern: '(?=[\\s\\S]*def\\s+enqueue)(?=[\\s\\S]*def\\s+dequeue)' }, reason: 'enqueue 또는 dequeue 함수 정의(def)가 없음' },
+          { id: 'impl_q_peek', label: '큐 peek(front)·isEmpty 함수 구현', points: 5, auto: { type: 'regex', pattern: '(?=[\\s\\S]*def\\s+(peek|front))(?=[\\s\\S]*def\\s+is_?empty)' }, reason: '큐의 peek(front) 또는 isEmpty 함수 정의(def)가 없음' },
+        ],
+      },
+      {
+        id: 'exc', name: '예외 상황 처리 및 프로그램 검증', base: 10,
+        checks: [
+          { id: 'exc_overflow', label: '오버플로우(가득 참) 예외 처리', points: 5, auto: { type: 'keyword', pattern: 'overflow, 오버플로우, 가득' }, reason: '오버플로우 상황 처리가 확인되지 않음' },
+          { id: 'exc_underflow', label: '언더플로우(비어 있음) 예외 처리', points: 5, auto: { type: 'keyword', pattern: 'underflow, 언더플로우, 비어, is_empty, isempty' }, reason: '언더플로우 상황 처리가 확인되지 않음' },
+          { id: 'exc_test', label: '테스트 코드로 연산 실행 결과 검증', points: 5, auto: { type: 'regex', pattern: 'print\\s*\\(' }, reason: '실행 결과를 확인하는 테스트 코드(print)가 없음' },
+          { id: 'exc_msg', label: '예외 상황을 알리는 처리(오류 메시지·raise·반환값 등)', points: 5, auto: { type: 'keyword', pattern: 'raise, except, error, 오류, 에러, 예외, return none' }, reason: '예외 상황을 알리는 처리(메시지·raise 등)가 확인되지 않음' },
+        ],
+      },
+    ],
+    flags: [
+      { type: 'missing', pattern: '\\bclass\\s+\\w+', message: 'class 없이 구현됨 — 과제 요구사항(교과서의 class Stack/Queue를 변경) 미준수. AI 작성 의심' },
+      { type: 'match', pattern: '(import\\s+collections|from\\s+collections|import\\s+queue\\b|from\\s+queue\\b|\\bdeque\\s*\\(|\\bQueue\\s*\\(\\))', message: 'deque/queue 내장 모듈 사용 의심 — 직접 구현 요구사항 위반 가능' },
+    ],
+  };
+
+  const PRESETS = [{ key: 'info-stack-queue', rubric: INFO_SCIENCE_STACK_QUEUE }];
+  // 예전 버전(배열 형식)의 기본 루브릭 체크 id — 그대로 남아 있으면 새 기본 기준으로 바꿔 준다.
+  const LEGACY_DEFAULT_IDS = ['design_s_push', 'impl_s_push', 'exc_overflow'];
+
+  const clone = (o) => JSON.parse(JSON.stringify(o));
+
+  function defaultRubric() { return normalize(clone(INFO_SCIENCE_STACK_QUEUE)); }
+  function blankRubric() { return normalize({ name: '새 채점 기준', step: 5, baseScore: 0, groups: [], flags: [] }); }
+
+  function isLegacyDefault(raw) {
+    if (!Array.isArray(raw)) return false;
+    const ids = raw.flatMap((g) => (g.checks || []).map((c) => c.id));
+    return LEGACY_DEFAULT_IDS.every((id) => ids.includes(id));
+  }
+
+  // 어떤 모양으로 들어오든(예전 배열 형식, 업로드한 JSON, AI 결과) 같은 구조로 맞춘다.
+  function normalize(raw) {
+    if (!raw) return defaultRubric();
+    if (isLegacyDefault(raw)) return defaultRubric();
+    let r = Array.isArray(raw) ? { name: '이전 채점 기준', step: 1, baseScore: 40, groups: raw } : Object.assign({}, raw);
+    r.name = String(r.name || '채점 기준');
+    r.step = Math.max(0.5, Number(r.step) || 1);
+    r.baseScore = Number(r.baseScore) || 0;
+    const groupIds = new Set();
+    r.groups = (r.groups || []).map((g, gi) => {
+      const name = String(g.name || '평가 영역 ' + (gi + 1));
+      let gid = g.id || 'g_' + hash(name);
+      while (groupIds.has(gid)) gid += '_';
+      groupIds.add(gid);
+      let requires = g.requires && g.requires.pattern ? { pattern: String(g.requires.pattern), message: String(g.requires.message || '') } : null;
+      if (!requires && g.requiresClass) requires = { pattern: '\\bclass\\s+\\w+', message: 'class 없이 구현됨' };
+      const checkIds = new Set();
+      const checks = (g.checks || []).map((c) => {
+        const label = String(c.label || '체크 항목');
+        let cid = c.id || 'c_' + hash(name + '|' + label);
+        while (checkIds.has(cid)) cid += '_';
+        checkIds.add(cid);
+        const type = c.auto && AUTO_TYPES[c.auto.type] ? c.auto.type : 'none';
+        return { id: cid, label, points: Number(c.points) || 0, auto: { type, pattern: String((c.auto && c.auto.pattern) || '') }, reason: String(c.reason || '') };
+      });
+      return { id: gid, name, base: Number(g.base) || 0, requires, checks };
+    });
+    r.flags = (r.flags || [])
+      .filter((f) => f && f.pattern)
+      .map((f) => ({ type: f.type === 'match' ? 'match' : 'missing', pattern: String(f.pattern), message: String(f.message || '') }));
+    return r;
+  }
+
+  // ---- 점수 ----
+  function groupMax(g) { return (g.base || 0) + (g.checks || []).reduce((s, c) => s + Number(c.points || 0), 0); }
+  function rubricMax(r) { return r.groups.reduce((s, g) => s + groupMax(g), 0); }
+  function rubricMin(r) { return Math.max(r.groups.reduce((s, g) => s + (g.base || 0), 0), r.baseScore || 0); }
+  function groupScore(g, checks) {
+    return (g.base || 0) + (g.checks || []).reduce((s, c) => s + (checks && checks[c.id] ? Number(c.points) : 0), 0);
+  }
+  // 미제출이면 0점(기본 점수 미적용).
+  function total(r, checks, status) {
+    if (status === '미제출') return 0;
+    const sum = r.groups.reduce((s, g) => s + groupScore(g, checks), 0);
+    return Math.max(sum, r.baseScore || 0);
+  }
+
+  // 배점 간격에 맞지 않는 항목 목록
+  function offStep(r) {
+    const bad = [];
+    const off = (v) => Math.abs(v / r.step - Math.round(v / r.step)) > 1e-9;
+    for (const g of r.groups) {
+      if (off(g.base || 0)) bad.push(g.name + ' (기본 ' + g.base + '점)');
+      for (const c of g.checks) if (off(c.points)) bad.push(c.label + ' (' + c.points + '점)');
+    }
+    return bad;
+  }
+
+  // ---- 자동 감지 ----
+  function safeRegex(p) { try { return new RegExp(p, 'i'); } catch (e) { return null; } }
+  function splitKw(p) { return (p || '').split(/[,\n]/).map((s) => s.trim()).filter(Boolean); }
+
+  function snippet(text, idx, len) {
+    const s = text.slice(Math.max(0, idx - 10), idx + Math.min(len, 40) + 10).replace(/\s+/g, ' ').trim();
+    return '"' + s + '"';
+  }
+
+  // { met, evidence } — evidence: 찾았으면 무엇을 찾았는지, 못 찾았으면 무엇을 못 찾았는지
+  function detect(auto, text) {
+    if (!auto || auto.type === 'none') return { met: false, manual: true, evidence: '' };
+    if (!text) return { met: false, evidence: '' };
+    const low = text.toLowerCase();
+    if (auto.type === 'keyword' || auto.type === 'keywordAll') {
+      const kws = splitKw(auto.pattern);
+      if (!kws.length) return { met: false, manual: true, evidence: '' };
+      const found = kws.filter((k) => low.includes(k.toLowerCase()));
+      const missing = kws.filter((k) => !found.includes(k));
+      const met = auto.type === 'keyword' ? found.length > 0 : missing.length === 0;
+      if (met) return { met, evidence: '키워드 발견: ' + found.join(', ') };
+      return {
+        met,
+        evidence: auto.type === 'keyword'
+          ? '제출물에서 키워드(' + kws.join(', ') + ') 중 어느 것도 찾지 못함'
+          : '제출물에서 키워드 ' + missing.join(', ') + '을(를) 찾지 못함',
+      };
     }
     if (auto.type === 'regex') {
-      if (!auto.pattern) return false;
-      try { return new RegExp(auto.pattern, 'i').test(text); } catch (e) { return false; }
+      const re = safeRegex(auto.pattern);
+      if (!re) return { met: false, evidence: '정규식 오류: ' + auto.pattern };
+      const m = re.exec(text);
+      if (m) return { met: true, evidence: m[0] ? '일치: ' + snippet(text, m.index, m[0].length) : '조건 일치' };
+      return { met: false, evidence: '제출물에서 패턴 /' + auto.pattern + '/ 과 일치하는 부분을 찾지 못함' };
     }
-    return false;
+    return { met: false, manual: true, evidence: '' };
   }
 
-  // 제출물 텍스트를 보고 체크리스트 상태를 추천한다 (자동 채점 초안).
-  // requiresClass가 걸린 영역은 class 없이 구현됐으면(AI 작성 의심) 체크를 전부 해제해
-  // 점수에도 반영한다.
-  function suggestChecks(rubric, text) {
-    const hasClass = /\bclass\s+\w+/.test(text || '');
+  function groupBlocked(g, text) {
+    if (!g.requires || !g.requires.pattern || !text) return false;
+    const re = safeRegex(g.requires.pattern);
+    return re ? !re.test(text) : false;
+  }
+
+  // 체크 항목 하나에 대한 자동 판정과 근거 문장.
+  function explain(g, c, text) {
+    if (!text) return { met: false, reason: '추출된 텍스트가 없어 자동 판정을 하지 못함 — 가운데 파일을 직접 확인하세요.' };
+    if (groupBlocked(g, text)) {
+      return { met: false, reason: '필수 조건 미충족: ' + (g.requires.message || '/' + g.requires.pattern + '/ 없음') };
+    }
+    const d = detect(c.auto, text);
+    if (d.manual) return { met: false, reason: c.reason || '자동 감지 대상이 아닌 항목 — 파일을 확인하고 근거를 적어 주세요.' };
+    if (d.met) return { met: true, reason: d.evidence };
+    // 정규식은 식 자체를 보여 줘도 알아보기 어려우니, 적어 둔 근거 문장이 있으면 그것만 쓴다.
+    if (c.auto.type === 'regex' && c.reason && !/^정규식 오류/.test(d.evidence)) return { met: false, reason: c.reason };
+    return { met: false, reason: (c.reason ? c.reason + ' — ' : '') + d.evidence };
+  }
+
+  function suggestChecks(r, text) {
     const out = {};
-    for (const item of rubric) {
-      const blocked = item.requiresClass && !hasClass;
-      for (const c of item.checks || []) out[c.id] = blocked ? false : evalAuto(c.auto, text);
+    for (const g of r.groups) for (const c of g.checks) out[c.id] = explain(g, c, text).met;
+    return out;
+  }
+
+  // 체크되지 않은 항목의 근거(교사가 고친 문장이 있으면 그것을 우선).
+  function reasonFor(g, c, s) {
+    if (s.reasonEdits && s.reasonEdits[c.id] != null) return s.reasonEdits[c.id];
+    const ex = explain(g, c, s.text);
+    if (ex.met) return '자동 감지로는 충족(' + ex.reason + ')으로 판단했으나 선생님이 체크를 해제함 — 근거를 적어 주세요.';
+    return ex.reason;
+  }
+
+  function detectFlags(r, text) {
+    if (!text) return [];
+    const out = [];
+    for (const f of r.flags || []) {
+      const re = safeRegex(f.pattern);
+      if (!re) continue;
+      const hit = re.test(text);
+      if ((f.type === 'match' && hit) || (f.type === 'missing' && !hit)) out.push(f.message || '/' + f.pattern + '/ ' + (f.type === 'match' ? '발견' : '없음'));
     }
     return out;
   }
 
-  function itemScore(item, checks) {
-    return (item.checks || []).reduce((s, c) => s + (checks && checks[c.id] ? Number(c.points) : 0), 0);
-  }
+  function presets() { return PRESETS.map((p) => ({ key: p.key, name: p.rubric.name, rubric: normalize(clone(p.rubric)) })); }
 
-  // status가 '미제출'이면 0점 (기본점수 미적용). 그 외에는 기본점수를 최저점으로 보장.
-  function total(rubric, checks, status) {
-    const sum = rubric.reduce((s, it) => s + itemScore(it, checks), 0);
-    if (status === '미제출') return 0;
-    return Math.max(sum, BASE_SCORE);
-  }
-
-  // 제출물에서 "AI가 대신 작성했을 가능성" 등 교사가 눈여겨봐야 할 신호를 찾는다.
-  // 점수에는 영향을 주지 않고 화면에 경고로만 표시한다 — 최종 판단은 교사가 한다.
-  function detectFlags(text) {
-    const flags = [];
-    if (!text) return flags;
-    const hasClass = /\bclass\s+\w+/.test(text);
-    const hasStackQueueOps = /def\s+(push|pop|enqueue|dequeue)\b/i.test(text);
-    if (hasStackQueueOps && !hasClass) {
-      flags.push('class 없이 구현됨 — 과제 요구사항(교과서의 class Stack/Queue를 변경) 미준수. AI 작성 의심');
-    }
-    if (/(import\s+collections|from\s+collections|import\s+queue\b|from\s+queue\b|\bdeque\s*\(|\bQueue\s*\(\))/i.test(text)) {
-      flags.push('deque/queue 내장 모듈 사용 의심 — 직접 구현 요구사항 위반 가능');
-    }
-    return flags;
-  }
-
-  return { DEFAULT_RUBRIC, BASE_SCORE, itemMax, rubricMax, evalAuto, suggestChecks, itemScore, total, detectFlags };
+  return {
+    AUTO_TYPES, normalize, defaultRubric, blankRubric, presets, hash,
+    groupMax, rubricMax, rubricMin, groupScore, total, offStep,
+    detect, explain, suggestChecks, reasonFor, detectFlags, groupBlocked,
+  };
 })();
