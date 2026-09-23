@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>클래스룸 수행평가 채점 도우미</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>📝 클래스룸 채점 도우미</h1>
+    <div id="authArea">
+      <button id="signInBtn" class="btn primary">Google로 로그인</button>
+      <span id="userInfo" class="hidden"></span>
+      <button id="signOutBtn" class="btn ghost hidden">로그아웃</button>
+    </div>
+  </header>
+
+  <main id="app" class="hidden">
+    <section class="panel" id="pickerPanel">
+      <div class="row">
+        <label>수업
+          <select id="courseSelect"><option>불러오는 중…</option></select>
+        </label>
+        <label>과제
+          <select id="courseWorkSelect" disabled><option>수업을 먼저 선택하세요</option></select>
+        </label>
+        <button id="loadBtn" class="btn primary" disabled>제출물 불러오기</button>
+        <span id="loadStatus" class="muted"></span>
+      </div>
+    </section>
+
+    <section class="panel hidden" id="rubricPanel">
+      <div class="panel-head">
+        <h2>채점 기준 (체크리스트)</h2>
+        <div>
+          <button id="addRubricGroupBtn" class="btn ghost small">+ 평가 영역 추가</button>
+          <button id="regradeBtn" class="btn primary small">전체 자동 재채점</button>
+        </div>
+      </div>
+      <div id="rubricGroups"></div>
+      <p class="hint">
+        각 평가 영역은 여러 개의 체크 항목으로 이뤄지고, <b>체크하면 그 배점만큼 점수가 더해집니다.</b>
+        체크 항목에 "자동 감지"를 키워드/정규식으로 설정하면 제출물 텍스트를 보고 미리 체크해 두지만(자동 채점 초안),
+        언제든 오른쪽 채점 화면에서 직접 켜고 끌 수 있습니다. 최종 판단은 선생님이 해주세요.
+      </p>
+    </section>
+
+    <section class="panel hidden" id="workArea">
+      <div class="panel-head">
+        <h2 id="workTitle">제출 현황</h2>
+        <div>
+          <button id="exportCsvBtn" class="btn ghost small">CSV 내보내기</button>
+          <button id="exportJsonBtn" class="btn ghost small">백업(JSON)</button>
+          <button id="importJsonBtn" class="btn ghost small">가져오기(JSON)</button>
+          <input type="file" id="importJsonInput" accept="application/json" class="hidden">
+        </div>
+      </div>
+      <div class="split3">
+        <div class="student-list" id="studentList"></div>
+        <div class="doc-viewer" id="docViewer">
+          <p class="muted">왼쪽 목록에서 학생을 선택하세요.</p>
+        </div>
+        <div class="grading-panel" id="gradingPanel">
+          <p class="muted">왼쪽 목록에서 학생을 선택하세요.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- Google Identity Services -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <!-- 파일 형식 변환용 라이브러리 -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  </script>
+
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/extract.js"></script>
+  <script src="js/grading.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
