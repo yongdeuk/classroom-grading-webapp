@@ -22,6 +22,7 @@
     students: [],
     hidden: new Set(), // 목록에서 지운(숨긴) 학생의 userId — 제출물을 다시 불러오면 유지됨
     selectedUserId: null,
+    checkedIds: new Set(), // 왼쪽 목록에서 체크해 둔(일괄 Claude 채점 대상) 학생의 userId
     viewIdx: {}, // 학생별로 가운데에 보고 있는 파일 번호
   };
 
@@ -563,25 +564,49 @@
   }
   $('#regradeBtn').addEventListener('click', regradeClick);
   $('#regradeBtn2').addEventListener('click', regradeClick);
-  $('#claudeGradeAllBtn').addEventListener('click', async () => {
+  // targets 학생들을 Claude로 일괄 채점한다. btn이 있으면 진행 상황을 그 버튼 글자에 표시하고,
+  // 끝나면 idleLabel로 되돌린다(선택 학생용 버튼은 매번 개수가 바뀌므로 호출부에서 직접 넘겨줌).
+  async function runClaudeGradeBulk(targets, btn, idleLabel) {
     if (!Claude.getKey()) { toast('먼저 "채점 기준" 탭에서 Claude API 키를 입력해 주세요.', 5000); return; }
-    const targets = state.students.filter((s) => s.status !== '미제출' && !s.confirmed && s.text);
-    if (!targets.length) { toast('Claude로 채점할 학생이 없습니다(모두 확인 완료됐거나 제출물이 없음).'); return; }
-    if (!confirm(targets.length + '명을 Claude(' + Claude.getModel() + ')로 채점합니다. 실제 API 요금이 청구됩니다. 계속할까요?')) return;
-    const btn = $('#claudeGradeAllBtn');
-    btn.disabled = true;
+    const list = targets.filter((s) => s.status !== '미제출' && s.text);
+    if (!list.length) { toast('Claude로 채점할 학생이 없습니다(제출물이 없거나 비어 있음).'); return; }
+    if (!confirm(list.length + '명을 Claude(' + Claude.getModel() + ')로 채점합니다. 실제 API 요금이 청구됩니다. 계속할까요?')) return;
+    if (btn) btn.disabled = true;
     let done = 0, failed = 0;
-    await runWithConcurrency(targets, 3, async (s) => {
+    await runWithConcurrency(list, 3, async (s) => {
       try { await gradeStudentWithClaude(s); } catch (e) { failed++; console.error(s.name, e); }
       done++;
-      btn.textContent = 'Claude 채점 중 (' + done + '/' + targets.length + ')…';
+      if (btn) btn.textContent = 'Claude 채점 중 (' + done + '/' + list.length + ')…';
       renderStudentList();
       if (state.selectedUserId === s.userId) renderGradingPanel(s);
     });
-    btn.disabled = false;
-    btn.textContent = '🤖 전체 Claude 채점';
+    if (btn) { btn.disabled = false; btn.textContent = idleLabel; }
     persist();
     toast('Claude 채점 완료: ' + (done - failed) + '명 성공' + (failed ? ', ' + failed + '명 실패' : ''), 6000);
+  }
+
+  $('#claudeGradeAllBtn').addEventListener('click', () => {
+    const targets = state.students.filter((s) => !s.confirmed);
+    runClaudeGradeBulk(targets, $('#claudeGradeAllBtn'), '🤖 전체 Claude 채점');
+  });
+
+  function updateSelectionButtons() {
+    const n = state.checkedIds.size;
+    const gradeBtn = $('#claudeGradeSelectedBtn'), clearBtn = $('#clearSelectionBtn');
+    gradeBtn.classList.toggle('hidden', n === 0);
+    clearBtn.classList.toggle('hidden', n === 0);
+    gradeBtn.textContent = '🤖 선택 학생 채점 (' + n + ')';
+  }
+
+  $('#claudeGradeSelectedBtn').addEventListener('click', () => {
+    const n = state.checkedIds.size;
+    const targets = state.students.filter((s) => state.checkedIds.has(s.userId));
+    runClaudeGradeBulk(targets, $('#claudeGradeSelectedBtn'), '🤖 선택 학생 채점 (' + n + ')');
+  });
+  $('#clearSelectionBtn').addEventListener('click', () => {
+    state.checkedIds.clear();
+    updateSelectionButtons();
+    renderStudentList();
   });
 
   $('#similarityBtn').addEventListener('click', () => {
@@ -745,6 +770,8 @@
   function renderStudentList() {
     const wrap = $('#studentList');
     const visible = state.students.filter((s) => !state.hidden.has(s.userId));
+    const visibleIds = new Set(visible.map((s) => s.userId));
+    for (const id of [...state.checkedIds]) if (!visibleIds.has(id)) state.checkedIds.delete(id);
     const restoreBar = state.hidden.size
       ? `<div class="hidden-bar">삭제한 학생 ${state.hidden.size}명 <button class="link-btn" id="restoreHiddenBtn">모두 되돌리기</button></div>`
       : '';
@@ -752,6 +779,7 @@
       .map(
         (s) => `
         <div class="student-row ${statusClass(s.status)} ${state.selectedUserId === s.userId ? 'selected' : ''}" data-uid="${esc(s.userId)}">
+          <input type="checkbox" class="row-check" data-check="${esc(s.userId)}" title="여러 학생 선택해서 한 번에 채점" ${state.checkedIds.has(s.userId) ? 'checked' : ''}>
           <span class="confirm-dot ${s.confirmed ? 'on' : ''}"></span>
           <span class="name">${esc(s.name)}${s.studentNo ? ` <span class="stuno">(${esc(s.studentNo)})</span>` : ''}${s.resubmitted ? ' 🔄' : ''}${Grading.isSuspect(s) ? ' 🤖' : ''}</span>
           <span class="status ${statusClass(s.status)}">${esc(s.status)}</span>
@@ -763,12 +791,20 @@
       .join('');
     wrap.querySelectorAll('.student-row').forEach((row) => {
       row.addEventListener('click', (e) => {
-        if (e.target.closest('[data-del]')) return;
+        if (e.target.closest('[data-del]') || e.target.closest('[data-check]')) return;
         state.selectedUserId = row.dataset.uid;
         renderStudentList();
         const s = selectedStudent();
         renderDocViewer(s);
         renderGradingPanel(s);
+      });
+    });
+    wrap.querySelectorAll('[data-check]').forEach((cb) => {
+      cb.addEventListener('click', (e) => e.stopPropagation());
+      cb.addEventListener('change', () => {
+        const uid = cb.dataset.check;
+        if (cb.checked) state.checkedIds.add(uid); else state.checkedIds.delete(uid);
+        updateSelectionButtons();
       });
     });
     wrap.querySelectorAll('[data-del]').forEach((btn) => {

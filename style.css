@@ -77,6 +77,7 @@ select { min-width: 220px; }
 .student-row .status.late { background: #fef3c7; color: var(--warn); }
 .student-row .status.absent { background: #f3f4f6; color: var(--muted); }
 .student-row .total { font-weight: 700; font-size: 13px; min-width: 30px; text-align: right; }
+.student-row .row-check { flex: none; margin: 0; cursor: pointer; }
 .student-row .confirm-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); flex: none; }
 .student-row .confirm-dot.on { background: var(--ok); }
 .student-row .row-del { border: none; background: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 2px 4px; flex: none; opacity: .5; }

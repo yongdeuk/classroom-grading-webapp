@@ -5,17 +5,24 @@
 const Claude = (() => {
   const KEY_STORE = 'grader:claudeKey';
   const MODEL_STORE = 'grader:claudeModel';
-  const DEFAULT_MODEL = 'claude-opus-5';
+  const DEFAULT_MODEL = 'claude-opus-5-5';
   const MODELS = [
-    { id: 'claude-opus-5', label: 'Claude Opus 5 (가장 정확, 비쌈)' },
+    { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 (가장 정확, 비쌈)' },
     { id: 'claude-sonnet-5', label: 'Claude Sonnet 5 (균형)' },
-    { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 (가장 저렴)' },
+    { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 (가장 저렴)' },
   ];
   const BASE = 'https://api.anthropic.com/v1/messages';
 
   function getKey() { try { return localStorage.getItem(KEY_STORE) || ''; } catch (e) { return ''; } }
   function setKey(k) { try { k ? localStorage.setItem(KEY_STORE, k.trim()) : localStorage.removeItem(KEY_STORE); } catch (e) {} }
-  function getModel() { try { return localStorage.getItem(MODEL_STORE) || DEFAULT_MODEL; } catch (e) { return DEFAULT_MODEL; } }
+  function getModel() {
+    // 예전 세션에 저장된 모델 id가 더 이상 유효하지 않으면(모델 이름이 바뀐 경우 등)
+    // 조용히 실패하지 말고 지금 목록에 있는 기본 모델로 되돌아간다.
+    let m;
+    try { m = localStorage.getItem(MODEL_STORE); } catch (e) { m = null; }
+    if (m && MODELS.some((x) => x.id === m)) return m;
+    return DEFAULT_MODEL;
+  }
   function setModel(m) { try { localStorage.setItem(MODEL_STORE, m); } catch (e) {} }
 
   // rubric(설계 20 + 체크...형태)의 체크 id들을 그대로 스키마 필드로 삼는다 —
