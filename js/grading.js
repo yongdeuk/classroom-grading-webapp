@@ -57,7 +57,10 @@ const Grading = (() => {
       },
     ],
     flags: [
-      { type: 'missing', pattern: '\\bclass\\s+\\w+', message: 'class 없이 구현됨 — 과제 요구사항(교과서의 class Stack/Queue를 변경) 미준수' },
+      // requiresPresent: 이 패턴(실제로 쓴 코드가 있다는 증거)이 없으면 애초에 이 신호를 판단하지
+      // 않는다 — 그래야 "작성해야 할 영역을 그냥 비워 둔" 미기입과 "AI가 대신 써 준 코드를 그대로
+      // 붙여넣어 class 요구사항만 못 지킨" 경우를 구분할 수 있다.
+      { type: 'missing', pattern: '\\bclass\\s+\\w+', requiresPresent: '\\bdef\\s+\\w+', message: 'class 없이 구현됨 — 과제 요구사항(교과서의 class Stack/Queue를 변경) 미준수' },
     ],
   };
 
@@ -111,7 +114,10 @@ const Grading = (() => {
     }
     r.flags = (r.flags || [])
       .filter((f) => f && f.pattern && !/import\\s\+collections/.test(f.pattern)) // 내장 모듈 의심 신호는 뺐음
-      .map((f) => ({ type: f.type === 'match' ? 'match' : 'missing', pattern: String(f.pattern), message: String(f.message || '') }));
+      .map((f) => ({
+        type: f.type === 'match' ? 'match' : 'missing', pattern: String(f.pattern), message: String(f.message || ''),
+        requiresPresent: f.requiresPresent ? String(f.requiresPresent) : '',
+      }));
     return r;
   }
 
@@ -227,6 +233,10 @@ const Grading = (() => {
     if (!text) return [];
     const out = [];
     for (const f of r.flags || []) {
+      if (f.requiresPresent) {
+        const rp = safeRegex(f.requiresPresent);
+        if (!rp || !rp.test(text)) continue; // 코드를 쓴 흔적 자체가 없으면(미기입) 이 신호는 따지지 않는다
+      }
       const re = safeRegex(f.pattern);
       if (!re) continue;
       const hit = re.test(text);
@@ -235,11 +245,20 @@ const Grading = (() => {
     return out;
   }
 
+  // "AI 작성 의심" 신호가 요구하는 최소 조건(requiresPresent)들이 하나도 없으면,
+  // 학생이 그냥 작성 영역을 비워 둔 것으로 보고 "미기입"으로 표시할 수 있게 알려 준다.
+  function isBlank(r, text) {
+    if (!text) return false;
+    const reqs = (r.flags || []).map((f) => f.requiresPresent).filter(Boolean);
+    if (!reqs.length) return false;
+    return reqs.every((p) => { const re = safeRegex(p); return !re || !re.test(text); });
+  }
+
   function presets() { return PRESETS.map((p) => ({ key: p.key, name: p.rubric.name, rubric: normalize(clone(p.rubric)) })); }
 
   return {
     AUTO_TYPES, normalize, defaultRubric, blankRubric, presets, hash,
     groupMax, rubricMax, rubricMin, groupScore, total, offStep,
-    detect, explain, suggestChecks, reasonFor, detectFlags, groupBlocked, isSuspect,
+    detect, explain, suggestChecks, reasonFor, detectFlags, isBlank, groupBlocked, isSuspect,
   };
 })();

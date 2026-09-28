@@ -637,6 +637,7 @@
   function renderDocViewer(s) {
     const el = $('#docViewer');
     if (!s) { el.innerHTML = '<p class="muted">왼쪽 목록에서 학생을 선택하세요.</p>'; el.dataset.key = ''; return; }
+    const absentDoc = s.status === '미제출';
 
     const idx = Math.min(state.viewIdx[s.userId] || 0, Math.max(0, s.files.length - 1));
     const f = s.files[idx];
@@ -648,7 +649,8 @@
         <span class="status ${statusClass(s.status)}">${esc(s.status)}</span>
         ${s.resubmitted ? '<span class="muted">🔄 재제출됨</span>' : ''}
       </div>
-      ${Grading.isSuspect(s) ? `<div class="flag-banner">🤖 AI 작성 의심${s.aiSuspect === true ? ' (선생님이 지정)' : ''}${s.flags && s.flags.length ? '<br>· ' + s.flags.map(esc).join('<br>· ') : ''}</div>` : ''}
+      ${Grading.isSuspect(s) ? `<div class="flag-banner">🤖 AI 작성 의심${s.aiSuspect === true ? ' (선생님이 지정)' : ''}${s.flags && s.flags.length ? '<br>· ' + s.flags.map(esc).join('<br>· ') : ''}</div>`
+        : (!absentDoc && Grading.isBlank(state.rubric, s.text) ? '<div class="blank-banner">📝 미기입 — 작성해야 할 영역이 비어 있는 것으로 보입니다.</div>' : '')}
       <div class="file-tabs">
         ${s.files
           .map(
@@ -771,7 +773,7 @@
         <label class="check-line"><input type="checkbox" id="aiSuspectChk" ${suspect ? 'checked' : ''}>
           <span class="c-label"><b>🤖 AI 작성 의심</b></span>
           <span class="c-points">${s.aiSuspect == null ? '자동 판정' : '선생님이 지정'}</span></label>
-        ${s.flags && s.flags.length ? `<div class="ai-signals">자동 감지 신호: ${s.flags.map(esc).join(' / ')}</div>` : '<div class="ai-signals">자동 감지 신호 없음</div>'}
+        ${s.flags && s.flags.length ? `<div class="ai-signals">자동 감지 신호: ${s.flags.map(esc).join(' / ')}</div>` : `<div class="ai-signals">자동 감지 신호 없음${!suspect && Grading.isBlank(state.rubric, s.text) ? ' — 📝 미기입으로 보임(작성 영역이 비어 있어 AI 의심 판정에서 제외)' : ''}</div>`}
         ${s.aiSuspect != null ? '<button class="link-btn" id="aiAutoBtn">자동 판정으로 되돌리기</button>' : ''}
       </div>`}
       ${groupsHtml}

@@ -48,11 +48,13 @@
           <div>
             <button id="regradeBtn2" class="btn ghost small">전체 자동 재채점</button>
             <button id="exportCsvBtn" class="btn ghost small">CSV 내보내기</button>
-            <button id="exportJsonBtn" class="btn ghost small">백업(JSON)</button>
-            <button id="importJsonBtn" class="btn ghost small">가져오기(JSON)</button>
+            <button id="exportJsonBtn" class="btn ghost small" title="지금까지 채점한 내용(체크·점수·AI 의심·비고 등)을 파일로 저장합니다">채점 결과 저장</button>
+            <button id="importJsonBtn" class="btn ghost small" title="저장해 둔 채점 결과 파일을 불러와 이어서 채점합니다">채점 결과 불러오기</button>
             <input type="file" id="importJsonInput" accept="application/json" class="hidden">
           </div>
         </div>
+        <p class="hint" style="margin:6px 0 12px">채점 내용은 체크·수정할 때마다 이 브라우저에 자동 저장됩니다. 다른 컴퓨터로 옮기거나
+          만약을 위해 따로 보관하려면 <b>채점 결과 저장</b>으로 파일을 받아 두고, 나중에 <b>채점 결과 불러오기</b>로 이어서 채점하세요.</p>
         <div class="split3">
           <div class="student-list" id="studentList"></div>
           <div class="doc-viewer" id="docViewer">
