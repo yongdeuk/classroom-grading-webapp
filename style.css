@@ -77,6 +77,9 @@ select { min-width: 220px; }
 .student-row .total { font-weight: 700; font-size: 13px; min-width: 30px; text-align: right; }
 .student-row .confirm-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); flex: none; }
 .student-row .confirm-dot.on { background: var(--ok); }
+.student-row .row-del { border: none; background: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 2px 4px; flex: none; opacity: .5; }
+.student-row .row-del:hover { opacity: 1; color: #b91c1c; }
+.hidden-bar { font-size: 12px; color: var(--muted); padding: 4px 2px 8px; }
 
 .doc-viewer, .grading-panel { background: #fff; border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; min-height: 400px; max-height: 82vh; overflow: auto; }
 .detail-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }

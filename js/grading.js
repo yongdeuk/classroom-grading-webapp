@@ -11,7 +11,7 @@
 //  - group.requires: 이 조건(정규식)이 제출물에 없으면 그 영역 체크를 자동으로 전부 해제.
 // 과목에 상관없이 쓸 수 있도록 과목 전용 규칙은 모두 루브릭 데이터 안에 둔다.
 const Grading = (() => {
-  const AUTO_TYPES = { none: '직접 확인', keyword: '키워드(하나라도)', keywordAll: '키워드(모두)', regex: '정규식' };
+  const AUTO_TYPES = { none: '직접 확인', keyword: '키워드(하나라도)', keywordAll: '키워드(모두)', regex: '정규식', filled: '표/항목 뒤 내용 채움' };
 
   function hash(str) {
     let h = 5381;
@@ -22,7 +22,7 @@ const Grading = (() => {
   // ---- 기본 제공 기준 ----
   const INFO_SCIENCE_STACK_QUEUE = {
     name: '정보과학 — 함수를 활용한 스택·큐 프로그램 구현 (1차 수행평가)',
-    step: 5,
+    step: 2.5, // 예외 처리 항목이 스택/큐 중 한쪽만 채워도 절반 점수를 줄 수 있도록 2.5점 단위 사용
     baseScore: 0,
     groups: [
       {
@@ -48,9 +48,15 @@ const Grading = (() => {
       },
       {
         id: 'exc', name: '예외 상황 처리 및 프로그램 검증', base: 10,
+        // 오버플로우·언더플로우는 스택 회차와 큐 회차에 각각 계획을 적어야 하므로, 문서를
+        // "2회차" 표시를 기준으로 앞(스택)/뒤(큐)로 나눠 각각 확인한다 — 한쪽만 채우면 절반만 인정.
         checks: [
-          { id: 'exc_overflow', label: '오버플로우(가득 참) 예외 처리', points: 5, auto: { type: 'keyword', pattern: 'overflow, 오버플로우, 가득' }, reason: '오버플로우 상황 처리가 확인되지 않음' },
-          { id: 'exc_underflow', label: '언더플로우(비어 있음) 예외 처리', points: 5, auto: { type: 'keyword', pattern: 'underflow, 언더플로우, 비어, is_empty, isempty' }, reason: '언더플로우 상황 처리가 확인되지 않음' },
+          // 유형 'filled': "오버플로우"라는 표 항목 이름 자체는 늘 인쇄돼 있으니(빈칸이어도 걸림),
+          // 그 항목 뒤에 실제 내용이 채워졌는지(다음 표 항목이 나오기 전까지)를 본다.
+          { id: 'exc_s_overflow', label: '스택: 오버플로우(가득 참) 예외 처리', points: 2.5, scope: 'stack', auto: { type: 'filled', pattern: '오버플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법' }, reason: '스택의 오버플로우 처리 계획 칸이 비어 있는 것으로 보임' },
+          { id: 'exc_q_overflow', label: '큐: 오버플로우(가득 참) 예외 처리', points: 2.5, scope: 'queue', auto: { type: 'filled', pattern: '오버플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법' }, reason: '큐의 오버플로우 처리 계획 칸이 비어 있는 것으로 보임' },
+          { id: 'exc_s_underflow', label: '스택: 언더플로우(비어 있음) 예외 처리', points: 2.5, scope: 'stack', auto: { type: 'filled', pattern: '언더플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법' }, reason: '스택의 언더플로우 처리 계획 칸이 비어 있는 것으로 보임' },
+          { id: 'exc_q_underflow', label: '큐: 언더플로우(비어 있음) 예외 처리', points: 2.5, scope: 'queue', auto: { type: 'filled', pattern: '언더플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법' }, reason: '큐의 언더플로우 처리 계획 칸이 비어 있는 것으로 보임' },
           { id: 'exc_test', label: '테스트 코드로 연산 실행 결과 검증', points: 5, auto: { type: 'regex', pattern: 'print\\s*\\(' }, reason: '실행 결과를 확인하는 테스트 코드(print)가 없음' },
           { id: 'exc_msg', label: '예외 상황을 알리는 처리(오류 메시지·raise·반환값 등)', points: 5, auto: { type: 'keyword', pattern: 'raise, except, error, 오류, 에러, 예외, return none' }, reason: '예외 상황을 알리는 처리(메시지·raise 등)가 확인되지 않음' },
         ],
@@ -105,7 +111,9 @@ const Grading = (() => {
         while (checkIds.has(cid)) cid += '_';
         checkIds.add(cid);
         const type = c.auto && AUTO_TYPES[c.auto.type] ? c.auto.type : 'none';
-        return { id: cid, label, points: Number(c.points) || 0, auto: { type, pattern: String((c.auto && c.auto.pattern) || '') }, reason: String(c.reason || '') };
+        const scope = c.scope === 'stack' || c.scope === 'queue' ? c.scope : '';
+        const stopAt = c.auto && c.auto.stopAt ? String(c.auto.stopAt) : '';
+        return { id: cid, label, points: Number(c.points) || 0, auto: { type, pattern: String((c.auto && c.auto.pattern) || ''), stopAt }, reason: String(c.reason || ''), scope };
       });
       return { id: gid, name, base: Number(g.base) || 0, requires, aiBlock, checks };
     });
@@ -181,8 +189,43 @@ const Grading = (() => {
       if (m) return { met: true, evidence: m[0] ? '일치: ' + snippet(text, m.index, m[0].length) : '조건 일치' };
       return { met: false, evidence: '제출물에서 패턴 /' + auto.pattern + '/ 과 일치하는 부분을 찾지 못함' };
     }
+    if (auto.type === 'filled') {
+      // "라벨" 항목 자체(표 헤더 등)는 늘 문서에 인쇄돼 있어 단순 키워드로는 빈칸도 항상
+      // 걸리므로, 그 라벨 바로 뒤(다음 표 라벨이 나오기 전까지)에 실제 내용이 채워졌는지 본다.
+      const label = (auto.pattern || '').trim();
+      if (!label) return { met: false, manual: true, evidence: '' };
+      const idx = low.indexOf(label.toLowerCase());
+      if (idx < 0) return { met: false, evidence: '"' + label + '" 항목 자체를 문서에서 찾지 못함' };
+      const nl = text.indexOf('\n', idx + label.length);
+      let rest = text.slice(idx + label.length, nl >= 0 ? Math.min(nl, idx + label.length + 150) : idx + label.length + 150);
+      const stopWords = splitKw(auto.stopAt || label);
+      let cut = rest.length;
+      for (const w of stopWords) {
+        const wi = rest.toLowerCase().indexOf(w.toLowerCase());
+        if (wi >= 0 && wi < cut) cut = wi;
+      }
+      rest = rest.slice(0, cut).replace(/[	]+/g, ' ').trim();
+      const filled = /[가-힣]{2,}|[A-Za-z]{3,}/.test(rest);
+      if (filled) return { met: true, evidence: '"' + label + '" 항목에 내용이 채워짐: "' + rest.slice(0, 60) + '"' };
+      return { met: false, evidence: '"' + label + '" 항목이 비어 있는 것으로 보임(표/칸에 내용이 채워지지 않음)' };
+    }
     return { met: false, manual: true, evidence: '' };
   }
+
+  // 문서를 "2회차" 표시를 기준으로 앞부분(1회차·스택)/뒷부분(2회차·큐)으로 나눈다.
+  // 회차 표시를 찾지 못하면 전체 텍스트를 그대로 두 구간 모두에 쓴다(예전 형식 등 호환).
+  function splitRounds(text) {
+    if (!text) return { stack: '', queue: '' };
+    const m = /2\s*회차/.exec(text);
+    if (!m) return { stack: text, queue: text };
+    return { stack: text.slice(0, m.index), queue: text.slice(m.index) };
+  }
+  function sectionText(scope, text) {
+    if (!scope) return text;
+    const { stack, queue } = splitRounds(text);
+    return scope === 'stack' ? stack : scope === 'queue' ? queue : text;
+  }
+  const SCOPE_LABEL = { stack: '스택(1회차) ', queue: '큐(2회차) ' };
 
   function groupBlocked(g, text) {
     if (!g.requires || !g.requires.pattern || !text) return false;
@@ -203,12 +246,14 @@ const Grading = (() => {
     if (groupBlocked(g, text)) {
       return { met: false, reason: '필수 조건 미충족: ' + (g.requires.message || '/' + g.requires.pattern + '/ 없음') };
     }
-    const d = detect(c.auto, text);
+    const scoped = sectionText(c.scope, text);
+    const prefix = c.scope ? SCOPE_LABEL[c.scope] : '';
+    const d = detect(c.auto, scoped);
     if (d.manual) return { met: false, reason: c.reason || '자동 감지 대상이 아닌 항목 — 파일을 확인하고 근거를 적어 주세요.' };
-    if (d.met) return { met: true, reason: d.evidence };
+    if (d.met) return { met: true, reason: prefix + d.evidence };
     // 정규식은 식 자체를 보여 줘도 알아보기 어려우니, 적어 둔 근거 문장이 있으면 그것만 쓴다.
-    if (c.auto.type === 'regex' && c.reason && !/^정규식 오류/.test(d.evidence)) return { met: false, reason: c.reason };
-    return { met: false, reason: (c.reason ? c.reason + ' — ' : '') + d.evidence };
+    if (c.auto.type === 'regex' && c.reason && !/^정규식 오류/.test(d.evidence)) return { met: false, reason: prefix + c.reason };
+    return { met: false, reason: prefix + (c.reason ? c.reason + ' — ' : '') + d.evidence };
   }
 
   // onlyAiBlock: AI 의심을 바꿨을 때처럼 aiBlock 영역만 다시 계산할 때

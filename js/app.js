@@ -13,6 +13,7 @@
     rubricTouched: false, // 과제를 불러오기 전에 기준을 바꿨으면, 불러올 때 그 기준을 쓴다
     loaded: false,
     students: [],
+    hidden: new Set(), // 목록에서 지운(숨긴) 학생의 userId — 제출물을 다시 불러오면 유지됨
     selectedUserId: null,
     viewIdx: {}, // 학생별로 가운데에 보고 있는 파일 번호
   };
@@ -49,7 +50,7 @@
         checks: s.checks, confirmed: s.confirmed, note: s.note, reasonEdits: s.reasonEdits, aiSuspect: s.aiSuspect,
       };
     }
-    Store.save(state.courseId, state.courseWorkId, { rubric: state.rubric, students, updatedAt: Date.now() });
+    Store.save(state.courseId, state.courseWorkId, { rubric: state.rubric, students, hidden: Array.from(state.hidden), updatedAt: Date.now() });
   }
 
   const selectedStudent = () => state.students.find((x) => x.userId === state.selectedUserId);
@@ -182,6 +183,8 @@
       const roster = students
         .map((s) => ({ userId: s.userId, name: s.profile.name.fullName }))
         .concat(extraSubs.map((sub) => ({ userId: sub.userId, name: '(명단에 없음 ' + sub.userId + ')' })));
+
+      state.hidden = new Set((cached && cached.hidden) || []);
 
       state.students = roster
         .map(({ userId, name }) => {
@@ -600,26 +603,53 @@
 
   function renderStudentList() {
     const wrap = $('#studentList');
-    wrap.innerHTML = state.students
-      .map((s) => {
-        const total = Grading.total(state.rubric, s.checks, s.status);
-        return `
+    const visible = state.students.filter((s) => !state.hidden.has(s.userId));
+    const restoreBar = state.hidden.size
+      ? `<div class="hidden-bar">삭제한 학생 ${state.hidden.size}명 <button class="link-btn" id="restoreHiddenBtn">모두 되돌리기</button></div>`
+      : '';
+    wrap.innerHTML = restoreBar + visible
+      .map(
+        (s) => `
         <div class="student-row ${statusClass(s.status)} ${state.selectedUserId === s.userId ? 'selected' : ''}" data-uid="${esc(s.userId)}">
           <span class="confirm-dot ${s.confirmed ? 'on' : ''}"></span>
           <span class="name">${esc(s.name)}${s.resubmitted ? ' 🔄' : ''}${Grading.isSuspect(s) ? ' 🤖' : ''}</span>
           <span class="status ${statusClass(s.status)}">${esc(s.status)}</span>
-          <span class="total">${total}</span>
-        </div>`;
-      })
+          <span class="total">${Grading.total(state.rubric, s.checks, s.status)}</span>
+          <button class="row-del" data-del="${esc(s.userId)}" title="목록에서 삭제(제출물을 다시 불러오면 복구 가능)">✕</button>
+        </div>`
+      )
       .join('');
     wrap.querySelectorAll('.student-row').forEach((row) => {
-      row.addEventListener('click', () => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('[data-del]')) return;
         state.selectedUserId = row.dataset.uid;
         renderStudentList();
         const s = selectedStudent();
         renderDocViewer(s);
         renderGradingPanel(s);
       });
+    });
+    wrap.querySelectorAll('[data-del]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const uid = btn.dataset.del;
+        const s = state.students.find((x) => x.userId === uid);
+        if (!confirm((s ? s.name : '이 학생') + '을(를) 목록에서 삭제할까요?\n(채점 데이터는 남아 있고, "제출물 불러오기"를 다시 누르면 목록에 되돌아옵니다)')) return;
+        state.hidden.add(uid);
+        if (state.selectedUserId === uid) {
+          state.selectedUserId = null;
+          renderDocViewer(null);
+          renderGradingPanel(null);
+        }
+        persist();
+        renderStudentList();
+      });
+    });
+    const restoreBtn = wrap.querySelector('#restoreHiddenBtn');
+    if (restoreBtn) restoreBtn.addEventListener('click', () => {
+      state.hidden.clear();
+      persist();
+      renderStudentList();
     });
   }
 
