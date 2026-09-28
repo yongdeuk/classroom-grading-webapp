@@ -33,7 +33,11 @@
     toast._t = setTimeout(() => el.classList.add('hidden'), ms || 3000);
   }
 
-  function setLoadStatus(msg) { $('#loadStatus').textContent = msg; }
+  function setLoadStatus(msg) {
+    $('#loadStatus').textContent = msg;
+    const s2 = $('#loadStatus2');
+    if (s2) s2.textContent = msg;
+  }
 
   async function runWithConcurrency(items, limit, worker) {
     let idx = 0;
@@ -78,6 +82,11 @@
     try { localStorage.setItem('grader:tab', tab); } catch (e) {}
   }
   document.querySelectorAll('.tab-btn').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+  $('#settingsTabBtn').addEventListener('click', () => showTab('rubric'));
+  $('#changeAssignBtn').addEventListener('click', () => {
+    $('#pickerSummary').classList.add('hidden');
+    $('#pickerForm').classList.remove('hidden');
+  });
 
   function renderRubricBadge() {
     const r = state.rubric;
@@ -93,6 +102,7 @@
       $('#userInfo').classList.remove('hidden');
       $('#userInfo').textContent = '로그인됨';
       $('#app').classList.remove('hidden');
+      $('#settingsTabBtn').classList.remove('hidden');
       if (!loadCourses._done) { loadCourses._done = true; loadCourses(); }
     } else {
       loadCourses._done = false;
@@ -100,6 +110,7 @@
       $('#signOutBtn').classList.add('hidden');
       $('#userInfo').classList.add('hidden');
       $('#app').classList.add('hidden');
+      $('#settingsTabBtn').classList.add('hidden');
     }
   }
 
@@ -153,6 +164,7 @@
     state.courseName = courseSel.selectedOptions[0].textContent;
     state.courseWorkTitle = cwSel.selectedOptions[0].textContent;
     $('#workTitle').textContent = state.courseName + ' — ' + state.courseWorkTitle;
+    $('#pickerSummaryTitle').textContent = state.courseName + ' — ' + state.courseWorkTitle;
 
     $('#loadBtn').disabled = true;
     setLoadStatus('제출물 불러오는 중…');
@@ -230,6 +242,8 @@
 
       state.loaded = true;
       state.selectedUserId = null;
+      $('#pickerForm').classList.add('hidden');
+      $('#pickerSummary').classList.remove('hidden');
       $('#gradeEmpty').classList.add('hidden');
       $('#workArea').classList.remove('hidden');
       renderRubricTab();
@@ -272,6 +286,15 @@
   function applyAutoChecks(s) {
     if (s.status === '미제출') { s.checks = {}; return; }
     if (!s.confirmed) s.checks = Grading.suggestChecks(state.rubric, s.text, Grading.isSuspect(s));
+    enforceCheckAiSuspect(s);
+  }
+
+  // 항목별로 "AI 의심"이라고 표시해 둔 체크는 자동 채점이 다시 켜지 못하게 0점으로 고정한다.
+  function enforceCheckAiSuspect(s) {
+    if (!s.checkAiSuspect) return;
+    for (const id of Object.keys(s.checkAiSuspect)) {
+      if (s.checkAiSuspect[id]) { s.checks = s.checks || {}; s.checks[id] = false; }
+    }
   }
 
   async function processStudent(s) {
@@ -309,6 +332,7 @@
     if (s.aiSuspect == null) {
       s.flags = result.aiSuspect ? [String(result.aiSuspectReason || 'Claude가 AI 작성 의심 신호를 감지함')] : [];
     }
+    enforceCheckAiSuspect(s);
     s.gradedByAI = true;
     s.gradedByAIAt = Date.now();
   }
@@ -834,8 +858,11 @@
           .map((c) => {
             const on = !!s.checks[c.id];
             const aiEv = s.aiEvidence[c.id];
+            const itemSuspect = !!(s.checkAiSuspect && s.checkAiSuspect[c.id]);
             let sub = '';
-            if (on) {
+            if (itemSuspect) {
+              sub = '<div class="evidence ai-mark-note">🤖 이 항목은 AI 의심으로 표시됨 — 0점 처리(직접 체크로 되돌릴 수 있음)</div>';
+            } else if (on) {
               const reason = aiEv != null ? aiEv : (Grading.explain(g, c, s.text, suspect).met ? Grading.explain(g, c, s.text, suspect).reason : '선생님이 직접 체크');
               sub = `<div class="evidence">✓ ${aiEv != null ? '🤖 ' : ''}${esc(reason)}</div>`;
             } else if (!absent) {
@@ -848,11 +875,12 @@
                 </div>`;
             }
             return `
-          <div class="check-item ${on ? 'on' : 'unmet'}">
+          <div class="check-item ${on ? 'on' : 'unmet'} ${itemSuspect ? 'ai-suspect' : ''}">
             <label class="check-line">
               <input type="checkbox" data-check="${esc(c.id)}" ${on ? 'checked' : ''} ${absent ? 'disabled' : ''}>
               <span class="c-label">${esc(c.label)}</span>
               <span class="c-points">+${c.points}</span>
+              ${!absent ? `<button class="ai-mark" data-aimark="${esc(c.id)}" title="이 항목만 AI 의심으로 표시(0점 처리)">${itemSuspect ? '🤖✓' : '🤖'}</button>` : ''}
             </label>
             ${sub}
           </div>`;
@@ -899,6 +927,19 @@
         persist();
       });
     });
+    el.querySelectorAll('[data-aimark]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const id = btn.dataset.aimark;
+        s.checkAiSuspect = s.checkAiSuspect || {};
+        const next = !s.checkAiSuspect[id];
+        if (next) s.checkAiSuspect[id] = true; else delete s.checkAiSuspect[id];
+        if (next) { s.checks = s.checks || {}; s.checks[id] = false; }
+        renderGradingPanel(s);
+        renderStudentList();
+        persist();
+      });
+    });
     el.querySelectorAll('[data-reason]').forEach((ta) => {
       ta.addEventListener('input', () => {
         s.reasonEdits[ta.dataset.reason] = ta.value;
@@ -917,6 +958,7 @@
     const setSuspect = (v) => {
       s.aiSuspect = v;
       s.checks = Grading.suggestChecks(state.rubric, s.text, Grading.isSuspect(s), s.checks, true);
+      enforceCheckAiSuspect(s);
       renderGradingPanel(s);
       renderDocViewer(s);
       renderStudentList();
