@@ -6,6 +6,13 @@
   const esc = (s) =>
     String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const clone = (o) => JSON.parse(JSON.stringify(o));
+  // 클래스룸 API에는 학번이 없어(학교 내부 학적 번호라 구글 계정에 없음), 학생이 문서
+  // 안에 직접 적은 "학번 20801" 같은 칸을 텍스트에서 찾아 보여준다.
+  function parseStudentNo(text) {
+    if (!text) return '';
+    const m = /학번[^0-9]{0,15}([0-9]{3,8})\b/.exec(text);
+    return m ? m[1] : '';
+  }
 
   const state = {
     courseId: null, courseWorkId: null, courseName: '', courseWorkTitle: '',
@@ -48,6 +55,7 @@
       students[s.userId] = {
         sig: s.sig, text: s.text, extractStatus: s.extractStatus,
         checks: s.checks, confirmed: s.confirmed, note: s.note, reasonEdits: s.reasonEdits, aiSuspect: s.aiSuspect,
+        aiEvidence: s.aiEvidence, gradedByAI: s.gradedByAI, gradedByAIAt: s.gradedByAIAt,
       };
     }
     Store.save(state.courseId, state.courseWorkId, { rubric: state.rubric, students, hidden: Array.from(state.hidden), updatedAt: Date.now() });
@@ -203,12 +211,16 @@
             status, files, links, answer, sig,
             resubmitted: !!prev.sig && !sigMatch,
             text: sigMatch ? prev.text || '' : '',
+            studentNo: sigMatch ? parseStudentNo(prev.text || '') : '',
             extractStatus: sigMatch ? prev.extractStatus || '대기' : (files.length || answer ? '대기' : '없음'),
             checks: prev.checks || {},
             confirmed: sigMatch && !legacy ? !!prev.confirmed : false,
             note: prev.note || '',
             reasonEdits: prev.reasonEdits || {},
             aiSuspect: sigMatch && prev.aiSuspect != null ? prev.aiSuspect : null,
+            aiEvidence: sigMatch ? prev.aiEvidence || {} : {},
+            gradedByAI: sigMatch ? !!prev.gradedByAI : false,
+            gradedByAIAt: sigMatch ? prev.gradedByAIAt || null : null,
           };
           s.flags = Grading.detectFlags(state.rubric, s.text);
           if (regradeAll && s.text) applyAutoChecks(s);
@@ -273,10 +285,32 @@
       s.extractStatus = '오류';
       s.text = '[추출 오류] ' + e.message;
     }
+    s.studentNo = parseStudentNo(s.text);
     s.flags = Grading.detectFlags(state.rubric, s.text);
     applyAutoChecks(s);
     renderStudentList();
     if (state.selectedUserId === s.userId) { renderDocViewer(s); renderGradingPanel(s); }
+  }
+
+  // Claude가 제출물을 직접 읽고 체크리스트를 판단한다(키워드/정규식보다 정확).
+  async function gradeStudentWithClaude(s) {
+    if (!s.text) throw new Error('추출된 텍스트가 없습니다. "다시 추출"을 먼저 눌러 주세요.');
+    const result = await Claude.gradeSubmission(state.rubric, s.text);
+    s.checks = s.checks || {};
+    s.aiEvidence = {};
+    for (const g of state.rubric.groups) {
+      for (const c of g.checks) {
+        const r = result.checks && result.checks[c.id];
+        if (!r) continue;
+        s.checks[c.id] = !!r.met;
+        s.aiEvidence[c.id] = String(r.reason || '');
+      }
+    }
+    if (s.aiSuspect == null) {
+      s.flags = result.aiSuspect ? [String(result.aiSuspectReason || 'Claude가 AI 작성 의심 신호를 감지함')] : [];
+    }
+    s.gradedByAI = true;
+    s.gradedByAIAt = Date.now();
   }
 
   // 기준이 바뀌었을 때: 확인 완료되지 않은 학생 전원을 새 기준으로 다시 자동 채점.
@@ -324,6 +358,11 @@
     renderRubricSummary();
     renderRubricBadge();
     $('#geminiKeyInput').value = Gemini.getKey() ? '••••••••(저장됨)' : '';
+    $('#claudeKeyInput').value = Claude.getKey() ? '••••••••(저장됨)' : '';
+    if (!$('#claudeModelSelect').options.length) {
+      $('#claudeModelSelect').innerHTML = Claude.MODELS.map((m) => `<option value="${esc(m.id)}">${esc(m.label)}</option>`).join('');
+    }
+    $('#claudeModelSelect').value = Claude.getModel();
   }
 
   function renderRubricSummary() {
@@ -499,6 +538,26 @@
   }
   $('#regradeBtn').addEventListener('click', regradeClick);
   $('#regradeBtn2').addEventListener('click', regradeClick);
+  $('#claudeGradeAllBtn').addEventListener('click', async () => {
+    if (!Claude.getKey()) { toast('먼저 "채점 기준" 탭에서 Claude API 키를 입력해 주세요.', 5000); return; }
+    const targets = state.students.filter((s) => s.status !== '미제출' && !s.confirmed && s.text);
+    if (!targets.length) { toast('Claude로 채점할 학생이 없습니다(모두 확인 완료됐거나 제출물이 없음).'); return; }
+    if (!confirm(targets.length + '명을 Claude(' + Claude.getModel() + ')로 채점합니다. 실제 API 요금이 청구됩니다. 계속할까요?')) return;
+    const btn = $('#claudeGradeAllBtn');
+    btn.disabled = true;
+    let done = 0, failed = 0;
+    await runWithConcurrency(targets, 3, async (s) => {
+      try { await gradeStudentWithClaude(s); } catch (e) { failed++; console.error(s.name, e); }
+      done++;
+      btn.textContent = 'Claude 채점 중 (' + done + '/' + targets.length + ')…';
+      renderStudentList();
+      if (state.selectedUserId === s.userId) renderGradingPanel(s);
+    });
+    btn.disabled = false;
+    btn.textContent = '🤖 전체 Claude 채점';
+    persist();
+    toast('Claude 채점 완료: ' + (done - failed) + '명 성공' + (failed ? ', ' + failed + '명 실패' : ''), 6000);
+  });
 
   // 보관함
   $('#libraryApplyBtn').addEventListener('click', () => {
@@ -594,6 +653,17 @@
     toast(v ? 'API 키를 이 브라우저에 저장했습니다' : 'API 키를 지웠습니다');
   });
 
+  // Claude 키
+  $('#claudeKeyInput').addEventListener('focus', (e) => { if (e.target.value.startsWith('••')) e.target.value = ''; });
+  $('#claudeKeySaveBtn').addEventListener('click', () => {
+    const v = $('#claudeKeyInput').value.trim();
+    if (v.startsWith('••')) { Claude.setModel($('#claudeModelSelect').value); return; }
+    Claude.setKey(v);
+    Claude.setModel($('#claudeModelSelect').value);
+    $('#claudeKeyInput').value = v ? '••••••••(저장됨)' : '';
+    toast(v ? 'Claude API 키를 이 브라우저에 저장했습니다' : 'Claude API 키를 지웠습니다');
+  });
+
   // ---------------- 학생 목록 ----------------
   function statusClass(status) {
     if (status === '미제출') return 'absent';
@@ -612,7 +682,7 @@
         (s) => `
         <div class="student-row ${statusClass(s.status)} ${state.selectedUserId === s.userId ? 'selected' : ''}" data-uid="${esc(s.userId)}">
           <span class="confirm-dot ${s.confirmed ? 'on' : ''}"></span>
-          <span class="name">${esc(s.name)}${s.resubmitted ? ' 🔄' : ''}${Grading.isSuspect(s) ? ' 🤖' : ''}</span>
+          <span class="name">${esc(s.name)}${s.studentNo ? ` <span class="stuno">(${esc(s.studentNo)})</span>` : ''}${s.resubmitted ? ' 🔄' : ''}${Grading.isSuspect(s) ? ' 🤖' : ''}</span>
           <span class="status ${statusClass(s.status)}">${esc(s.status)}</span>
           <span class="total">${Grading.total(state.rubric, s.checks, s.status)}</span>
           <button class="row-del" data-del="${esc(s.userId)}" title="목록에서 삭제(제출물을 다시 불러오면 복구 가능)">✕</button>
@@ -675,7 +745,7 @@
 
     const head = `
       <div class="detail-head">
-        <h3>${esc(s.name)}</h3>
+        <h3>${esc(s.name)}${s.studentNo ? ` <span class="stuno">(${esc(s.studentNo)})</span>` : ''}</h3>
         <span class="status ${statusClass(s.status)}">${esc(s.status)}</span>
         ${s.resubmitted ? '<span class="muted">🔄 재제출됨</span>' : ''}
       </div>
@@ -753,6 +823,7 @@
 
     s.checks = s.checks || {};
     s.reasonEdits = s.reasonEdits || {};
+    s.aiEvidence = s.aiEvidence || {};
     const absent = s.status === '미제출';
     const suspect = Grading.isSuspect(s);
     const groupsHtml = state.rubric.groups
@@ -762,16 +833,18 @@
         const checksHtml = g.checks
           .map((c) => {
             const on = !!s.checks[c.id];
+            const aiEv = s.aiEvidence[c.id];
             let sub = '';
             if (on) {
-              const ex = Grading.explain(g, c, s.text, suspect);
-              sub = `<div class="evidence">✓ ${ex.met ? esc(ex.reason) : '선생님이 직접 체크'}</div>`;
+              const reason = aiEv != null ? aiEv : (Grading.explain(g, c, s.text, suspect).met ? Grading.explain(g, c, s.text, suspect).reason : '선생님이 직접 체크');
+              sub = `<div class="evidence">✓ ${aiEv != null ? '🤖 ' : ''}${esc(reason)}</div>`;
             } else if (!absent) {
               const edited = s.reasonEdits[c.id] != null;
+              const defaultReason = edited ? Grading.reasonFor(g, c, s) : aiEv != null ? aiEv : Grading.reasonFor(g, c, s);
               sub = `
                 <div class="reason-box">
-                  <div class="reason-head">미충족 근거 ${edited ? '<span class="edited">수정함</span><button class="link-btn" data-resetreason="' + esc(c.id) + '">자동 근거로 되돌리기</button>' : ''}</div>
-                  <textarea data-reason="${esc(c.id)}" rows="2">${esc(Grading.reasonFor(g, c, s))}</textarea>
+                  <div class="reason-head">미충족 근거 ${aiEv != null && !edited ? '<span class="edited">🤖 Claude</span>' : ''}${edited ? '<span class="edited">수정함</span><button class="link-btn" data-resetreason="' + esc(c.id) + '">자동 근거로 되돌리기</button>' : ''}</div>
+                  <textarea data-reason="${esc(c.id)}" rows="2">${esc(defaultReason)}</textarea>
                 </div>`;
             }
             return `
@@ -797,7 +870,11 @@
       .join('');
 
     el.innerHTML = `
-      <h3 style="margin-top:0">${esc(s.name)} 채점</h3>
+      <div class="grading-head">
+        <h3 style="margin:0">${esc(s.name)} 채점</h3>
+        ${!absent ? `<button class="btn ghost small" id="claudeGradeBtn">🤖 Claude로 채점</button>` : ''}
+      </div>
+      ${s.gradedByAI ? `<div class="ai-graded-note">🤖 Claude가 채점함 (${esc(new Date(s.gradedByAIAt).toLocaleString('ko-KR'))}) — 체크와 근거를 확인하고 필요하면 고치세요.</div>` : ''}
       ${absent ? '<p class="muted">미제출 — 0점</p>' : `
       <div class="ai-box ${suspect ? 'on' : ''}">
         <label class="check-line"><input type="checkbox" id="aiSuspectChk" ${suspect ? 'checked' : ''}>
@@ -857,6 +934,22 @@
     el.querySelector('#notesInput').addEventListener('input', (e) => {
       s.note = e.target.value;
       persist();
+    });
+    const cgBtn = el.querySelector('#claudeGradeBtn');
+    if (cgBtn) cgBtn.addEventListener('click', async () => {
+      cgBtn.disabled = true;
+      cgBtn.textContent = '채점 중…';
+      try {
+        await gradeStudentWithClaude(s);
+        persist();
+        renderStudentList();
+        renderGradingPanel(s);
+        toast('Claude 채점 완료');
+      } catch (e) {
+        toast('Claude 채점 실패: ' + e.message, 6000);
+        cgBtn.disabled = false;
+        cgBtn.textContent = '🤖 Claude로 채점';
+      }
     });
   }
 

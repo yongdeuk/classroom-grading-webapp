@@ -71,6 +71,7 @@ select { min-width: 220px; }
 .student-row.selected { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(79,70,229,.15); }
 .student-row.absent { background: #f3f4f6; color: var(--muted); }
 .student-row .name { flex: 1; font-size: 13px; font-weight: 600; }
+.stuno { font-weight: 400; color: var(--muted); font-size: 12px; }
 .student-row .status { font-size: 11px; padding: 2px 6px; border-radius: 999px; background: #eef2ff; color: var(--primary); white-space: nowrap; }
 .student-row .status.late { background: #fef3c7; color: var(--warn); }
 .student-row .status.absent { background: #f3f4f6; color: var(--muted); }
@@ -93,6 +94,9 @@ select { min-width: 220px; }
 .flag-banner { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; border-radius: 8px; padding: 8px 12px; font-size: 12.5px; margin-bottom: 10px; line-height: 1.6; }
 .blank-banner { background: #f3f4f6; border: 1px solid #d1d5db; color: #4b5563; border-radius: 8px; padding: 8px 12px; font-size: 12.5px; margin-bottom: 10px; line-height: 1.6; }
 .flag-note { color: #b91c1c; font-size: 11.5px; margin: 0 0 6px; }
+.grading-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.ai-graded-note { background: #eef2ff; border: 1px solid #c7d2fe; color: var(--primary); border-radius: 8px; padding: 6px 10px; font-size: 12px; margin-bottom: 10px; }
+
 
 .grade-group { margin-bottom: 16px; }
 .grade-group-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 13.5px; font-weight: 700; margin-bottom: 6px; }

@@ -47,6 +47,7 @@
           <h2 id="workTitle">제출 현황</h2>
           <div>
             <button id="regradeBtn2" class="btn ghost small">전체 자동 재채점</button>
+            <button id="claudeGradeAllBtn" class="btn ghost small" title="확인 완료되지 않은 학생 전원을 Claude로 채점(API 요금 발생)">🤖 전체 Claude 채점</button>
             <button id="exportCsvBtn" class="btn ghost small">CSV 내보내기</button>
             <button id="exportJsonBtn" class="btn ghost small" title="지금까지 채점한 내용(체크·점수·AI 의심·비고 등)을 파일로 저장합니다">채점 결과 저장</button>
             <button id="importJsonBtn" class="btn ghost small" title="저장해 둔 채점 결과 파일을 불러와 이어서 채점합니다">채점 결과 불러오기</button>
@@ -135,6 +136,24 @@
           키는 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>에서 무료로 만들 수 있고,
           <b>이 브라우저에만 저장</b>됩니다(서버·저장소로 보내지 않음). 엑셀/CSV/JSON 기준 파일은 키 없이도 됩니다.</p>
       </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>AI 채점 (Claude)</h2></div>
+        <div class="row">
+          <label>Claude API 키
+            <input type="password" id="claudeKeyInput" style="min-width:340px" autocomplete="off" placeholder="sk-ant-…">
+          </label>
+          <label>모델
+            <select id="claudeModelSelect"></select>
+          </label>
+          <button id="claudeKeySaveBtn" class="btn ghost small">저장</button>
+        </div>
+        <p class="hint">키워드·정규식 자동 감지 대신, <b>Claude가 제출물을 직접 읽고 채점 체크리스트를 판단</b>합니다 — class 없이
+          짠 코드인지, 표 빈칸을 안 채운 건지, 코드 로직이 실제로 맞는지까지 더 정확하게 봅니다. 왼쪽에서 학생을 선택한 뒤
+          채점 화면의 <b>"🤖 Claude로 채점"</b> 버튼을 누르세요(전체 학생 일괄 채점도 가능). 실제 API 요금이 청구되니
+          <b>확인 완료된 학생에게는 자동으로 실행되지 않습니다.</b> 키는 <a href="https://console.claude.com/settings/keys" target="_blank" rel="noopener">Anthropic Console</a>에서
+          만들 수 있고, <b>이 브라우저에만 저장</b>됩니다.</p>
+      </section>
     </div>
   </main>
 
@@ -158,6 +177,7 @@
   <script src="js/extract.js"></script>
   <script src="js/grading.js"></script>
   <script src="js/gemini.js"></script>
+  <script src="js/claude.js"></script>
   <script src="js/rubric-import.js"></script>
   <script src="js/store.js"></script>
   <script src="js/app.js"></script>
