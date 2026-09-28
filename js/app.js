@@ -215,12 +215,13 @@
           const answer = (sub && sub.shortAnswerSubmission && sub.shortAnswerSubmission.answer) || '';
           const turned = sub && (sub.state === 'TURNED_IN' || sub.state === 'RETURNED');
           const status = files.length || answer || links.length ? (sub.late ? '제출(지각)' : '제출') : turned ? '제출(파일없음)' : '미제출';
+          const submittedAt = turned && sub.updateTime ? sub.updateTime : null;
           const sig = files.map((f) => f.id).join(',') + '|' + answer.length + '|' + links.join(',');
           const prev = cachedStudents[userId] || {};
           const sigMatch = prev.sig === sig;
           const s = {
             userId, name,
-            status, files, links, answer, sig,
+            status, files, links, answer, sig, submittedAt,
             resubmitted: !!prev.sig && !sigMatch,
             text: sigMatch ? prev.text || '' : '',
             studentNo: sigMatch ? parseStudentNo(prev.text || '') : '',
@@ -583,6 +584,47 @@
     toast('Claude 채점 완료: ' + (done - failed) + '명 성공' + (failed ? ', ' + failed + '명 실패' : ''), 6000);
   });
 
+  $('#similarityBtn').addEventListener('click', () => {
+    const panel = $('#similarityPanel');
+    if (!panel.classList.contains('hidden')) { panel.classList.add('hidden'); return; }
+    const result = Similarity.analyze(state.students.filter((s) => !state.hidden.has(s.userId)));
+    renderSimilarityPanel(result);
+    panel.classList.remove('hidden');
+  });
+
+  function renderSimilarityPanel(result) {
+    const panel = $('#similarityPanel');
+    if (!result.groups.length) {
+      panel.innerHTML = `<div class="similarity-head"><b>👥 유사 제출물 확인</b><button class="btn ghost small" id="similarityCloseBtn">닫기</button></div>
+        <p class="muted" style="margin:6px 0 0">겹치는 내용을 가진 제출물을 찾지 못했습니다 (비교 대상 ${result.comparedCount}명, 과제 공통 문구 ${result.commonLineCount}줄 제외하고 비교함).</p>`;
+    } else {
+      panel.innerHTML = `<div class="similarity-head"><b>👥 유사 제출물 확인</b><button class="btn ghost small" id="similarityCloseBtn">닫기</button></div>
+        <p class="hint" style="margin:4px 0 10px">과제 안내문·표 양식처럼 여러 학생이 똑같이 갖고 있는 문구(${result.commonLineCount}줄)는 제외하고,
+          학생이 직접 쓴 부분만 비교했습니다. 참고용이며 최종 판단은 선생님이 해 주세요.</p>
+        ${result.groups
+          .map(
+            (g) => `
+          <div class="similarity-group">
+            <span class="sim-score">유사도 ${Math.round(g.score * 100)}%</span>
+            ${g.members
+              .map((m) => `<button class="link-btn sim-name" data-uid="${esc(m.userId)}">${esc(m.name)}</button>`)
+              .join(' · ')}
+          </div>`
+          )
+          .join('')}`;
+    }
+    panel.querySelector('#similarityCloseBtn').addEventListener('click', () => panel.classList.add('hidden'));
+    panel.querySelectorAll('.sim-name').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.selectedUserId = btn.dataset.uid;
+        renderStudentList();
+        const s = selectedStudent();
+        renderDocViewer(s);
+        renderGradingPanel(s);
+      });
+    });
+  }
+
   // 보관함
   $('#libraryApplyBtn').addEventListener('click', () => {
     const item = libraryPick();
@@ -695,6 +737,11 @@
     return '';
   }
 
+  function fmtTime(iso) {
+    if (!iso) return '';
+    return new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
   function renderStudentList() {
     const wrap = $('#studentList');
     const visible = state.students.filter((s) => !state.hidden.has(s.userId));
@@ -708,6 +755,7 @@
           <span class="confirm-dot ${s.confirmed ? 'on' : ''}"></span>
           <span class="name">${esc(s.name)}${s.studentNo ? ` <span class="stuno">(${esc(s.studentNo)})</span>` : ''}${s.resubmitted ? ' 🔄' : ''}${Grading.isSuspect(s) ? ' 🤖' : ''}</span>
           <span class="status ${statusClass(s.status)}">${esc(s.status)}</span>
+          ${s.submittedAt ? `<span class="subtime" title="제출 처리된 시각(클래스룸 기준)">${esc(fmtTime(s.submittedAt))}</span>` : ''}
           <span class="total">${Grading.total(state.rubric, s.checks, s.status)}</span>
           <button class="row-del" data-del="${esc(s.userId)}" title="목록에서 삭제(제출물을 다시 불러오면 복구 가능)">✕</button>
         </div>`
@@ -771,6 +819,7 @@
       <div class="detail-head">
         <h3>${esc(s.name)}${s.studentNo ? ` <span class="stuno">(${esc(s.studentNo)})</span>` : ''}</h3>
         <span class="status ${statusClass(s.status)}">${esc(s.status)}</span>
+        ${s.submittedAt ? `<span class="muted">제출: ${esc(fmtTime(s.submittedAt))}</span>` : ''}
         ${s.resubmitted ? '<span class="muted">🔄 재제출됨</span>' : ''}
       </div>
       ${Grading.isSuspect(s) ? `<div class="flag-banner">🤖 AI 작성 의심${s.aiSuspect === true ? ' (선생님이 지정)' : ''}${s.flags && s.flags.length ? '<br>· ' + s.flags.map(esc).join('<br>· ') : ''}</div>`

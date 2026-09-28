@@ -81,7 +81,15 @@ select { min-width: 220px; }
 .student-row .confirm-dot.on { background: var(--ok); }
 .student-row .row-del { border: none; background: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 2px 4px; flex: none; opacity: .5; }
 .student-row .row-del:hover { opacity: 1; color: #b91c1c; }
+.student-row .subtime { font-size: 11px; color: var(--muted); white-space: nowrap; }
 .hidden-bar { font-size: 12px; color: var(--muted); padding: 4px 2px 8px; }
+
+.similarity-panel { background: #fffbeb; border: 1px solid #fde68a; border-radius: var(--radius); padding: 14px 16px; margin-bottom: 14px; }
+.similarity-head { display: flex; align-items: center; justify-content: space-between; }
+.similarity-group { border-top: 1px dashed #fde68a; padding: 8px 0; font-size: 13px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.similarity-group:first-of-type { border-top: none; }
+.sim-score { font-weight: 700; color: #b45309; font-size: 12px; background: #fef3c7; border-radius: 999px; padding: 2px 8px; }
+.sim-name.link-btn { margin-left: 0; color: var(--primary); text-decoration: underline; font-size: 13px; }
 
 .doc-viewer, .grading-panel { background: #fff; border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; min-height: 400px; max-height: 82vh; overflow: auto; }
 .detail-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
