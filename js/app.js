@@ -222,6 +222,9 @@
           const turned = sub && (sub.state === 'TURNED_IN' || sub.state === 'RETURNED');
           const status = files.length || answer || links.length ? (sub.late ? '제출(지각)' : '제출') : turned ? '제출(파일없음)' : '미제출';
           const submittedAt = turned && sub.updateTime ? sub.updateTime : null;
+          // 클래스룸에 선생님이 입력한 점수(돌려준 점수 우선, 없으면 임시 점수). 댓글은 API로 읽을 수 없음.
+          const crGrade = sub && sub.assignedGrade != null ? { value: sub.assignedGrade, kind: '반환' }
+            : sub && sub.draftGrade != null ? { value: sub.draftGrade, kind: '임시' } : null;
           const sig = files.map((f) => f.id).join(',') + '|' + answer.length + '|' + links.join(',');
           const prev = cachedStudents[userId] || {};
           // 2.5점 항목(9/28 버전) → 5점 항목으로 변환. 한쪽만 체크돼 점수가 바뀌면 확인 완료를 풀어 다시 보게 한다.
@@ -230,7 +233,7 @@
           const sigMatch = prev.sig === sig;
           const s = {
             userId, name,
-            status, files, links, answer, sig, submittedAt,
+            status, files, links, answer, sig, submittedAt, crGrade,
             resubmitted: !!prev.sig && !sigMatch,
             text: sigMatch ? prev.text || '' : '',
             studentNo: sigMatch ? parseStudentNo(prev.text || '') : '',
@@ -838,7 +841,7 @@
           <span class="confirm-dot ${s.confirmed ? 'on' : ''}"></span>
           <span class="name">${esc(s.name)}${s.studentNo ? ` <span class="stuno">(${esc(s.studentNo)})</span>` : ''}${s.resubmitted ? ' 🔄' : ''}${Grading.isSuspect(s) ? ' 🤖' : ''}${teacherEditCount(s) ? ' <span title="선생님 수정 있음">✏️</span>' : ''}</span>
           <span class="status ${statusClass(s.status)}">${esc(s.status)}</span>
-          <span class="total">${Grading.total(state.rubric, s.checks, s.status)}</span>
+          <span class="total">${Grading.total(state.rubric, s.checks, s.status)}${s.crGrade && Number(s.crGrade.value) !== Grading.total(state.rubric, s.checks, s.status) ? `<span class="cr-diff" title="클래스룸 점수 ${esc(s.crGrade.value)}점과 다름">≠${esc(s.crGrade.value)}</span>` : ''}</span>
           <button class="row-del" data-del="${esc(s.userId)}" title="목록에서 삭제(제출물을 다시 불러오면 복구 가능)">✕</button>
         </div>`
       )
@@ -918,6 +921,7 @@
       <div class="detail-head">
         <h3>${esc(s.name)}${s.studentNo ? ` <span class="stuno">(${esc(s.studentNo)})</span>` : ''}</h3>
         <span class="head-score" id="dvScore">${Grading.total(state.rubric, s.checks, s.status)}점</span>
+        ${s.crGrade ? `<span class="cr-grade" title="구글 클래스룸에 입력된 점수(${s.crGrade.kind})">클래스룸 ${esc(s.crGrade.value)}점${s.crGrade.kind === '임시' ? '(임시)' : ''}</span>` : ''}
         <span class="status ${statusClass(s.status)}">${esc(s.status)}</span>
         ${s.submittedAt ? `<span class="muted">제출: ${esc(fmtTime(s.submittedAt))}</span>` : ''}
         ${s.resubmitted ? '<span class="muted">🔄 재제출됨</span>' : ''}

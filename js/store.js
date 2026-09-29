@@ -58,13 +58,14 @@ const Store = (() => {
   function setCourseRubric(courseId, rubric) { if (courseId) writeJson('grader:courseRubric:' + courseId, rubric); }
 
   function exportCsv(rubric, students, meta) {
-    const header = ['학번', '이름', '상태'].concat(rubric.groups.map((g) => g.name), ['합계', '확인', 'AI 의심', '교사 수정', '미충족 항목 근거', '코멘트', '비고']);
+    const header = ['학번', '이름', '상태'].concat(rubric.groups.map((g) => g.name), ['합계', '클래스룸 점수', '확인', 'AI 의심', '교사 수정', '미충족 항목 근거', '코멘트', '비고']);
     const rows = [header];
     for (const s of students) {
       const checks = s.checks || {};
       const row = [s.studentNo || '', s.name, s.status];
       for (const g of rubric.groups) row.push(s.status === '미제출' ? 0 : Grading.groupScore(g, checks));
       row.push(Grading.total(rubric, checks, s.status));
+      row.push(s.crGrade ? s.crGrade.value + (s.crGrade.kind === '임시' ? '(임시)' : '') : '');
       row.push(s.confirmed ? 'Y' : '');
       row.push(s.status !== '미제출' && Grading.isSuspect(s) ? 'Y' : '');
       // 선생님이 직접 바꾼 체크 항목
