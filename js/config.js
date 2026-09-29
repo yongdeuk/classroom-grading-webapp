@@ -12,6 +12,10 @@ const CONFIG = {
     'https://www.googleapis.com/auth/drive.readonly',
   ].join(' '),
 
+  // 감점 근거를 학생 제출 파일에 댓글로 달 때만 추가로 요청하는 드라이브 권한
+  // (다른 사람이 만든 파일에 댓글을 쓰려면 전체 드라이브 권한이 필요 — 읽기 전용 외에는 댓글만 씀)
+  COMMENT_SCOPE: 'https://www.googleapis.com/auth/drive',
+
   // 채점 기준 파일(pdf, hwp/hwpx, 이미지 등)을 읽어 체크리스트로 바꿀 때 쓰는 제미나이 모델.
   // 이 이름이 폐기되면 쓸 수 있는 flash 모델을 자동으로 찾아 씁니다.
   // API 키는 여기 넣지 말고 앱의 "채점 기준" 탭에서 입력하세요(브라우저에만 저장됨).

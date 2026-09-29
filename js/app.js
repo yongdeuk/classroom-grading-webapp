@@ -61,7 +61,7 @@
       students[s.userId] = {
         sig: s.sig, text: s.text, extractStatus: s.extractStatus,
         checks: s.checks, confirmed: s.confirmed, note: s.note, reasonEdits: s.reasonEdits, comments: s.comments, blank: s.blank, aiSuspect: s.aiSuspect,
-        aiEvidence: s.aiEvidence, gradedByAI: s.gradedByAI, gradedByAIAt: s.gradedByAIAt,
+        aiEvidence: s.aiEvidence, gradedByAI: s.gradedByAI, gradedByAIAt: s.gradedByAIAt, feedbackPosted: s.feedbackPosted,
         teacherChecks: s.teacherChecks, teacherSavedAt: s.teacherSavedAt,
       };
     }
@@ -265,6 +265,7 @@
             aiSuspect: sigMatch && prev.aiSuspect != null ? prev.aiSuspect : null,
             aiEvidence: sigMatch ? prev.aiEvidence || {} : {},
             gradedByAI: sigMatch ? !!prev.gradedByAI : false,
+            feedbackPosted: prev.feedbackPosted || null,
             // 선생님 수정은 같은 제출물일 때만 유지(재제출하면 새로 채점)
             teacherChecks: sigMatch ? prev.teacherChecks || {} : {},
             teacherSavedAt: sigMatch ? prev.teacherSavedAt || null : null,
@@ -671,7 +672,13 @@
     gradeBtn.classList.toggle('hidden', n === 0);
     clearBtn.classList.toggle('hidden', n === 0);
     gradeBtn.textContent = '🤖 선택 학생 채점 (' + n + ')';
+    $('#commentSelectedBtn').classList.toggle('hidden', n === 0);
+    $('#commentSelectedBtn').textContent = '💬 선택 학생 근거 댓글 (' + n + ')';
   }
+
+  $('#commentSelectedBtn').addEventListener('click', () => {
+    openCommentModal(state.students.filter((s) => state.checkedIds.has(s.userId)));
+  });
 
   $('#claudeGradeSelectedBtn').addEventListener('click', () => {
     const n = state.checkedIds.size;
@@ -1084,6 +1091,7 @@
       </div>
       ${!absent ? `<div class="teacher-bar">
         <button class="btn primary small" id="teacherSaveBtn">💾 교사 수정 저장</button>
+        <button class="btn ghost small" id="commentOneBtn" title="이 학생 제출 파일에 감점 근거를 댓글로 남깁니다(보내기 전에 미리보기)">💬 근거 댓글${s.feedbackPosted ? ' ✓' : ''}</button>
         <span class="muted">✏️ 선생님 수정 ${teacherEditCount(s)}건${s.teacherSavedAt ? ' · 저장 ' + esc(new Date(s.teacherSavedAt).toLocaleString('ko-KR')) : ''} — 자동 재채점·Claude 채점을 해도 유지됩니다</span>
       </div>` : ''}
       ${s.gradedByAI ? `<div class="ai-graded-note">🤖 Claude가 채점함 (${esc(new Date(s.gradedByAIAt).toLocaleString('ko-KR'))}) — 체크와 근거를 확인하고 필요하면 고치세요.</div>` : ''}
@@ -1128,6 +1136,8 @@
         persist();
       });
     });
+    const cOne = el.querySelector('#commentOneBtn');
+    if (cOne) cOne.addEventListener('click', () => openCommentModal([s]));
     const tSave = el.querySelector('#teacherSaveBtn');
     if (tSave) tSave.addEventListener('click', () => {
       s.teacherSavedAt = Date.now();
@@ -1217,6 +1227,97 @@
       }
     });
   }
+
+  // ---------------- 감점 근거 댓글(학생 제출 파일에 드라이브 댓글) ----------------
+  // 체크되지 않은 항목의 근거(선생님이 고친 근거 우선)와, 점수는 줬지만 부족했던 부분(코멘트)을 모은다.
+  function buildFeedback(s) {
+    const r = state.rubric;
+    const lines = ['[수행평가 채점 근거]'];
+    if (s.blank) {
+      lines.push('- 작성해야 할 영역이 비어 있어 최소점으로 처리했습니다.');
+      return lines.join('\n');
+    }
+    const minus = [], notes = [];
+    for (const g of r.groups) for (const c of g.checks) {
+      if (!s.checks[c.id]) {
+        const aiEv = s.aiEvidence && s.aiEvidence[c.id];
+        const reason = s.reasonEdits && s.reasonEdits[c.id] != null ? s.reasonEdits[c.id] : aiEv != null ? aiEv : Grading.reasonFor(g, c, s);
+        minus.push('- ' + c.label + ' (-' + c.points + '점): ' + reason);
+      } else {
+        const cm = Grading.commentFor(g, c, s);
+        if (cm) notes.push('- ' + c.label + ': ' + cm);
+      }
+    }
+    if (minus.length) lines.push('감점 항목', ...minus);
+    else lines.push('모든 채점 항목을 충족했습니다.');
+    if (notes.length) lines.push('', '참고', ...notes);
+    return lines.join('\n');
+  }
+
+  let commentTargets = [];
+  function openCommentModal(students) {
+    commentTargets = students.map((s) => {
+      const f = s.files[Math.min(state.viewIdx[s.userId] || 0, Math.max(0, s.files.length - 1))];
+      const skip = s.status === '미제출' ? '미제출' : !f ? '제출 파일이 없음(댓글을 달 파일이 없음)' : '';
+      return { s, file: f, text: skip ? '' : buildFeedback(s), skip };
+    });
+    $('#commentItems').innerHTML = commentTargets
+      .map((t, i) => `
+        <div class="comment-item">
+          <div class="comment-item-head"><b>${esc(t.s.name)}</b>
+            ${t.file ? `<span class="muted">→ 📎 ${esc(t.file.name)}</span>` : ''}
+            ${t.s.feedbackPosted ? `<span class="warn-inline">이미 보냄(${esc(new Date(t.s.feedbackPosted.at).toLocaleString('ko-KR'))}) — 다시 보내면 댓글이 하나 더 달립니다</span>` : ''}
+          </div>
+          ${t.skip ? `<p class="muted" style="margin:4px 0">건너뜀: ${esc(t.skip)}</p>` : `<textarea data-ci="${i}" rows="${Math.min(12, t.text.split('\n').length + 1)}">${esc(t.text)}</textarea>`}
+        </div>`)
+      .join('');
+    $('#commentItems').querySelectorAll('textarea[data-ci]').forEach((ta) => {
+      ta.addEventListener('input', () => { commentTargets[Number(ta.dataset.ci)].text = ta.value; });
+    });
+    const n = commentTargets.filter((t) => !t.skip).length;
+    $('#commentSendBtn').textContent = n + '명에게 보내기';
+    $('#commentSendBtn').disabled = n === 0;
+    $('#commentStatus').textContent = '';
+    $('#commentModal').classList.remove('hidden');
+  }
+
+  $('#commentCancelBtn').addEventListener('click', () => $('#commentModal').classList.add('hidden'));
+  $('#commentSendBtn').addEventListener('click', async () => {
+    const todo = commentTargets.filter((t) => !t.skip && t.text.trim());
+    if (!todo.length) return;
+    const btn = $('#commentSendBtn');
+    btn.disabled = true;
+    $('#commentStatus').textContent = '드라이브 댓글 권한 확인 중… (처음 한 번은 구글 동의 창이 뜹니다)';
+    const ok = await Auth.ensureScope(CONFIG.COMMENT_SCOPE);
+    if (!ok) {
+      $('#commentStatus').textContent = '❌ 댓글 쓰기 권한을 받지 못했습니다(동의 창에서 허용해야 합니다. 학교 관리자가 막았을 수도 있습니다).';
+      btn.disabled = false;
+      return;
+    }
+    let done = 0;
+    const failed = [];
+    for (const t of todo) {
+      $('#commentStatus').textContent = '보내는 중… (' + done + '/' + todo.length + ')';
+      try {
+        const res = await Api.addComment(t.file.id, t.text.trim());
+        t.s.feedbackPosted = { at: Date.now(), fileId: t.file.id, fileName: t.file.name, commentId: res.id };
+        done++;
+      } catch (e) {
+        failed.push(t.s.name + ': ' + e.message);
+      }
+    }
+    persist();
+    renderStudentList();
+    const sel = selectedStudent();
+    if (sel) renderGradingPanel(sel);
+    btn.disabled = false;
+    if (failed.length) {
+      $('#commentStatus').textContent = '✅ ' + done + '명 보냄, ❌ ' + failed.length + '명 실패 — ' + failed.join(' / ');
+    } else {
+      $('#commentModal').classList.add('hidden');
+      toast(done + '명의 제출 파일에 감점 근거 댓글을 달았습니다');
+    }
+  });
 
   // ---------------- 이벤트 바인딩 ----------------
   $('#signInBtn').addEventListener('click', () => Auth.signIn());

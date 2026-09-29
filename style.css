@@ -229,3 +229,12 @@ label.inline input { width: 70px; font-size: 12.5px; padding: 5px 8px; }
 .cr-diff { font-size: 10.5px; font-weight: 600; color: #b45309; margin-left: 3px; }
 .home-link { color: inherit; text-decoration: none; }
 .home-link:hover { color: var(--primary); }
+.modal { position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 50; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.modal-box { background: var(--panel); border-radius: var(--radius); width: min(760px, 100%); max-height: 88vh; overflow: auto; padding: 18px 20px; box-shadow: 0 10px 40px rgba(0,0,0,.2); }
+.modal-head { display: flex; align-items: center; justify-content: space-between; }
+.modal-foot { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 12px; position: sticky; bottom: -18px; background: var(--panel); padding: 10px 0; }
+.modal-foot .muted { flex: 1; font-size: 12px; }
+.comment-item { border-top: 1px solid var(--border); padding: 10px 0; }
+.comment-item-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 13px; margin-bottom: 4px; }
+.comment-item textarea { width: 100%; font-size: 12.5px; line-height: 1.55; }
+.warn-inline { font-size: 11.5px; color: var(--warn); }

@@ -57,6 +57,21 @@ const Api = (() => {
       );
     },
 
+    // 드라이브 파일에 댓글 달기(학생 제출 파일에 감점 근거 남기기)
+    async addComment(fileId, content) {
+      const res = await fetch('https://www.googleapis.com/drive/v3/files/' + fileId + '/comments?fields=id,createdTime', {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, await authHeader()),
+        body: JSON.stringify({ content }),
+      });
+      if (!res.ok) {
+        let msg = res.status + ' ' + res.statusText;
+        try { const j = await res.json(); if (j.error && j.error.message) msg = j.error.message; } catch (e) {}
+        throw new Error(msg);
+      }
+      return res.json();
+    },
+
     async getFileMetaSafe(fileId) {
       const fields = 'id,name,mimeType,webViewLink,iconLink';
       return getJson('https://www.googleapis.com/drive/v3/files/' + fileId + '?fields=' + encodeURIComponent(fields));
