@@ -865,7 +865,7 @@
         <div class="student-row ${statusClass(s.status)} ${state.selectedUserId === s.userId ? 'selected' : ''} ${s.status !== '미제출' && Grading.isSuspect(s) ? 'ai-row' : ''}" data-uid="${esc(s.userId)}">
           <input type="checkbox" class="row-check" data-check="${esc(s.userId)}" title="여러 학생 선택해서 한 번에 채점" ${state.checkedIds.has(s.userId) ? 'checked' : ''}>
           <span class="confirm-dot ${s.confirmed ? 'on' : ''}"></span>
-          <span class="name">${esc(s.name)}${s.studentNo ? ` <span class="stuno">(${esc(s.studentNo)})</span>` : ''}${s.resubmitted ? ' 🔄' : ''}${s.status !== '미제출' && Grading.isSuspect(s) ? ' <span class="ai-badge">🤖 AI 의심</span>' : ''}${teacherEditCount(s) ? ' <span title="선생님 수정 있음">✏️</span>' : ''}</span>
+          <span class="name">${esc(s.name)}${s.studentNo ? ` <span class="stuno">(${esc(s.studentNo)})</span>` : ''}${s.resubmitted ? ' 🔄' : ''}${s.status !== '미제출' && Grading.isSuspect(s) ? ' <span class="ai-badge">🤖 AI 의심</span>' : ''}</span>
           <span class="status ${statusClass(s.status)}">${esc(s.status)}</span>
           <span class="total">${Grading.total(state.rubric, s.checks, s.status)}${s.crGrade && Number(s.crGrade.value) !== Grading.total(state.rubric, s.checks, s.status) ? `<span class="cr-diff" title="클래스룸 점수 ${esc(s.crGrade.value)}점과 다름">≠${esc(s.crGrade.value)}</span>` : ''}</span>
           <button class="row-del" data-del="${esc(s.userId)}" title="목록에서 삭제(제출물을 다시 불러오면 복구 가능)">✕</button>
