@@ -215,3 +215,6 @@ label.inline input { width: 70px; font-size: 12.5px; padding: 5px 8px; }
   .check-row-head { display: none; }
 }
 #librarySelect { font-size: 13px; min-width: 320px; }
+
+.comment-box .reason-head { color: var(--warn); }
+.comment-box textarea { background: #fffbeb; border-color: #fde68a; }

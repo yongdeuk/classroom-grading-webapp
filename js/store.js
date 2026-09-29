@@ -58,7 +58,7 @@ const Store = (() => {
   function setCourseRubric(courseId, rubric) { if (courseId) writeJson('grader:courseRubric:' + courseId, rubric); }
 
   function exportCsv(rubric, students, meta) {
-    const header = ['학번', '이름', '상태'].concat(rubric.groups.map((g) => g.name), ['합계', '확인', 'AI 의심', '미충족 항목 근거', '비고']);
+    const header = ['학번', '이름', '상태'].concat(rubric.groups.map((g) => g.name), ['합계', '확인', 'AI 의심', '미충족 항목 근거', '코멘트', '비고']);
     const rows = [header];
     for (const s of students) {
       const checks = s.checks || {};
@@ -74,6 +74,15 @@ const Store = (() => {
         }
       }
       row.push(reasons.join('\n'));
+      // 점수는 줬지만 부족했던 부분(예전 -2.5점 사항 등)
+      const comments = [];
+      if (s.status !== '미제출') {
+        for (const g of rubric.groups) for (const c of g.checks) {
+          const cm = checks[c.id] ? Grading.commentFor(g, c, s) : '';
+          if (cm) comments.push('[' + c.label + '] ' + cm);
+        }
+      }
+      row.push(comments.join('\n'));
       row.push(s.note || '');
       rows.push(row);
     }

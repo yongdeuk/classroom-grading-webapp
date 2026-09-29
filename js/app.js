@@ -59,7 +59,7 @@
     for (const s of state.students) {
       students[s.userId] = {
         sig: s.sig, text: s.text, extractStatus: s.extractStatus,
-        checks: s.checks, confirmed: s.confirmed, note: s.note, reasonEdits: s.reasonEdits, aiSuspect: s.aiSuspect,
+        checks: s.checks, confirmed: s.confirmed, note: s.note, reasonEdits: s.reasonEdits, comments: s.comments, aiSuspect: s.aiSuspect,
         aiEvidence: s.aiEvidence, gradedByAI: s.gradedByAI, gradedByAIAt: s.gradedByAIAt,
       };
     }
@@ -234,6 +234,7 @@
             confirmed: sigMatch && !legacy && !mig.changed ? !!prev.confirmed : false,
             note: prev.note || '',
             reasonEdits: prev.reasonEdits || {},
+            comments: Object.assign({}, prev.comments || {}, mig.comments || {}),
             aiSuspect: sigMatch && prev.aiSuspect != null ? prev.aiSuspect : null,
             aiEvidence: sigMatch ? prev.aiEvidence || {} : {},
             gradedByAI: sigMatch ? !!prev.gradedByAI : false,
@@ -256,7 +257,7 @@
       $('#docViewer').innerHTML = $('#gradingPanel').innerHTML = '<p class="muted">왼쪽 목록에서 학생을 선택하세요.</p>';
       $('#docViewer').dataset.key = '';
       persist();
-      if (halfChanged) toast('예외 처리 2.5점 항목을 5점 단위(스택/큐 각 5점)로 바꿨습니다. 점수가 바뀐 ' + halfChanged + '명은 확인 완료를 풀었으니 다시 확인해 주세요.', 8000);
+      if (halfChanged) toast('예외 처리 2.5점 항목을 5점 단위(스택/큐 각 5점)로 바꿨습니다. 예전에 -2.5점이던 ' + halfChanged + '명은 5점을 주고 코멘트를 남겼습니다 — 확인 완료를 풀었으니 다시 확인해 주세요.', 8000);
       if (legacy) toast('예전 형식의 채점 기준을 새 기준(5점 간격)으로 바꿨습니다. 확인 완료 표시는 다시 해 주세요.', 6000);
 
       const todo = state.students.filter((s) => s.status !== '미제출' && s.extractStatus !== '완료');
@@ -960,6 +961,13 @@
             } else if (on) {
               const reason = aiEv != null ? aiEv : (Grading.explain(g, c, s.text, suspect).met ? Grading.explain(g, c, s.text, suspect).reason : '선생님이 직접 체크');
               sub = `<div class="evidence">✓ ${aiEv != null ? '🤖 ' : ''}${esc(reason)}</div>`;
+              // 5점 단위라 점수는 줬지만 부족했던 부분(예전 -2.5점 사항 등)은 코멘트로 — 고칠 수 있음
+              const cm = Grading.commentFor(g, c, s);
+              if (cm) sub += `
+                <div class="reason-box comment-box">
+                  <div class="reason-head">💬 코멘트 ${s.comments && s.comments[c.id] != null ? '<button class="link-btn" data-resetcomment="' + esc(c.id) + '">자동 코멘트로 되돌리기</button>' : ''}</div>
+                  <textarea data-comment="${esc(c.id)}" rows="2">${esc(cm)}</textarea>
+                </div>`;
             } else if (!absent) {
               const edited = s.reasonEdits[c.id] != null;
               const defaultReason = edited ? Grading.reasonFor(g, c, s) : aiEv != null ? aiEv : Grading.reasonFor(g, c, s);
@@ -1032,6 +1040,20 @@
         if (next) { s.checks = s.checks || {}; s.checks[id] = false; }
         renderGradingPanel(s);
         renderStudentList();
+        persist();
+      });
+    });
+    el.querySelectorAll('[data-comment]').forEach((ta) => {
+      ta.addEventListener('input', () => {
+        s.comments = s.comments || {};
+        s.comments[ta.dataset.comment] = ta.value;
+        persist();
+      });
+    });
+    el.querySelectorAll('[data-resetcomment]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        delete s.comments[btn.dataset.resetcomment];
+        renderGradingPanel(s);
         persist();
       });
     });

@@ -54,7 +54,8 @@ const Grading = (() => {
         checks: [
           // 유형 'filled': "오버플로우"라는 표 항목 이름 자체는 늘 인쇄돼 있으니(빈칸이어도 걸림),
           // 그 항목 뒤에 실제 내용이 채워졌는지(다음 표 항목이 나오기 전까지)를 본다.
-          // 스택 회차·큐 회차 각각 오버플로우·언더플로우 칸을 모두 채워야 5점(한쪽 구조만 채우면 그 구조 5점만).
+          // 스택 회차·큐 회차 각각 5점. 오버플로우·언더플로우 중 한 칸만 채웠으면 5점은 주고,
+          // 빈 칸은 "예전 기준 -2.5점 사항"으로 코멘트에 남긴다(배점은 5점 단위로만).
           { id: 'exc_s_flow', label: '스택: 오버플로우·언더플로우 예외 처리', points: 5, scope: 'stack', auto: { type: 'filled', pattern: '오버플로우, 언더플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법' }, reason: '스택의 오버플로우·언더플로우 처리 계획 칸이 비어 있는 것으로 보임' },
           { id: 'exc_q_flow', label: '큐: 오버플로우·언더플로우 예외 처리', points: 5, scope: 'queue', auto: { type: 'filled', pattern: '오버플로우, 언더플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법' }, reason: '큐의 오버플로우·언더플로우 처리 계획 칸이 비어 있는 것으로 보임' },
           { id: 'exc_test', label: '테스트 코드로 연산 실행 결과 검증', points: 5, auto: { type: 'regex', pattern: 'print\\s*\\(' }, reason: '실행 결과를 확인하는 테스트 코드(print)가 없음' },
@@ -95,18 +96,31 @@ const Grading = (() => {
     }
     return Object.assign({}, g, { checks: out });
   }
-  // 학생 체크도 같이 변환: 두 칸 모두 체크돼 있어야 합친 항목 체크. lost=한쪽만 체크돼 있던 경우(점수 변동)
+  // 학생 체크도 같이 변환: 두 칸 중 하나라도 체크돼 있으면 합친 항목 5점 인정(5점 단위 가산).
+  // 한쪽만 체크돼 있던 경우(예전 -2.5점)는 점수가 바뀌므로 changed로 알리고 코멘트를 남긴다.
+  const HALF_NAMES = { exc_s_overflow: '스택 오버플로우', exc_s_underflow: '스택 언더플로우', exc_q_overflow: '큐 오버플로우', exc_q_underflow: '큐 언더플로우' };
   function migrateStudentChecks(checks) {
-    if (!checks || !HALF_IDS.some((id) => id in checks)) return { checks, changed: false };
+    if (!checks || !HALF_IDS.some((id) => id in checks)) return { checks, changed: false, comments: {} };
     const out = Object.assign({}, checks);
+    const comments = {};
     let changed = false;
     for (const [newId, [a, b]] of Object.entries(HALF_PAIRS)) {
       if (!(a in out) && !(b in out)) continue;
-      out[newId] = !!out[a] && !!out[b];
-      if (!!out[a] !== !!out[b]) changed = true;
+      out[newId] = !!out[a] || !!out[b];
+      if (!!out[a] !== !!out[b]) {
+        changed = true;
+        const missing = out[a] ? b : a;
+        comments[newId] = HALF_NAMES[missing] + ' 미충족 — 예전 2.5점 기준에서 -2.5점이었던 사항(5점 단위로 바뀌어 5점 인정, 코멘트로 남김)';
+      }
       delete out[a]; delete out[b];
     }
-    return { checks: out, changed };
+    return { checks: out, changed, comments };
+  }
+
+  // 체크된 항목에 붙는 코멘트(선생님·변환 코멘트 우선, 없으면 자동 감지의 부분 미충족 코멘트).
+  function commentFor(g, c, s) {
+    if (s.comments && s.comments[c.id] != null) return s.comments[c.id];
+    return explain(g, c, s.text, isSuspect(s)).comment || '';
   }
   const CLASS_RE = '\\bclass\\s+\\w+';
 
@@ -250,6 +264,15 @@ const Grading = (() => {
         else empty.push('"' + label + '"' + (t === null ? '(항목 없음)' : ''));
       }
       if (!empty.length) return { met: true, evidence: '내용이 채워짐 — ' + found.join(', ') };
+      // 일부만 채움: 배점은 5점 단위라 쪼개지 않고 이 항목 점수는 주되, 예전 2.5점 기준이라면
+      // 깎였을(-2.5점) 부분을 코멘트로 남긴다.
+      if (found.length) {
+        return {
+          met: true, partial: true,
+          evidence: '일부 채워짐 — ' + found.join(', '),
+          comment: empty.join(', ') + ' 칸 미기입 — 예전 2.5점 기준이면 -2.5점 사항(5점 단위라 감점하지 않고 코멘트로 남김)',
+        };
+      }
       return { met: false, evidence: empty.join(', ') + ' 칸이 비어 있는 것으로 보임(표/칸에 내용이 채워지지 않음)' };
     }
     return { met: false, manual: true, evidence: '' };
@@ -293,7 +316,7 @@ const Grading = (() => {
     const prefix = c.scope ? SCOPE_LABEL[c.scope] : '';
     const d = detect(c.auto, scoped);
     if (d.manual) return { met: false, reason: c.reason || '자동 감지 대상이 아닌 항목 — 파일을 확인하고 근거를 적어 주세요.' };
-    if (d.met) return { met: true, reason: prefix + d.evidence };
+    if (d.met) return { met: true, reason: prefix + d.evidence, comment: d.comment ? prefix + d.comment : '' };
     // 정규식은 식 자체를 보여 줘도 알아보기 어려우니, 적어 둔 근거 문장이 있으면 그것만 쓴다.
     if (c.auto.type === 'regex' && c.reason && !/^정규식 오류/.test(d.evidence)) return { met: false, reason: prefix + c.reason };
     return { met: false, reason: prefix + (c.reason ? c.reason + ' — ' : '') + d.evidence };
@@ -345,7 +368,7 @@ const Grading = (() => {
   function presets() { return PRESETS.map((p) => ({ key: p.key, name: p.rubric.name, rubric: normalize(clone(p.rubric)) })); }
 
   return {
-    snap, migrateStudentChecks,
+    snap, migrateStudentChecks, commentFor,
     AUTO_TYPES, normalize, defaultRubric, blankRubric, presets, hash,
     groupMax, rubricMax, rubricMin, groupScore, total, offStep,
     detect, explain, suggestChecks, reasonFor, detectFlags, isBlank, groupBlocked, isSuspect,
