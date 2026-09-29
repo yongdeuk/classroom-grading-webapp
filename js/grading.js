@@ -325,9 +325,12 @@ const Grading = (() => {
   // onlyAiBlock: AI 의심을 바꿨을 때처럼 aiBlock 영역만 다시 계산할 때
   function suggestChecks(r, text, suspect, prev, onlyAiBlock) {
     const out = Object.assign({}, prev || {});
+    // 미기입(작성 영역이 비어 있음)이면 학습지에 인쇄된 문구(push, 오버플로우 …)가 키워드에
+    // 걸리더라도 아무것도 체크하지 않는다 → 제출자 최소점.
+    const blank = isBlank(r, text);
     for (const g of r.groups) {
       if (onlyAiBlock && !g.aiBlock) continue;
-      for (const c of g.checks) out[c.id] = explain(g, c, text, suspect).met;
+      for (const c of g.checks) out[c.id] = blank ? false : explain(g, c, text, suspect).met;
     }
     return out;
   }
@@ -335,6 +338,7 @@ const Grading = (() => {
   // 체크되지 않은 항목의 근거(교사가 고친 문장이 있으면 그것을 우선).
   function reasonFor(g, c, s) {
     if (s.reasonEdits && s.reasonEdits[c.id] != null) return s.reasonEdits[c.id];
+    if (s.blank) return '미기입 — 작성해야 할 영역이 비어 있어 최소점 처리';
     const ex = explain(g, c, s.text, isSuspect(s));
     if (ex.met) return '자동 감지로는 충족(' + ex.reason + ')으로 판단했으나 선생님이 체크를 해제함 — 근거를 적어 주세요.';
     return ex.reason;

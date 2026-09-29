@@ -218,3 +218,4 @@ label.inline input { width: 70px; font-size: 12.5px; padding: 5px 8px; }
 
 .comment-box .reason-head { color: var(--warn); }
 .comment-box textarea { background: #fffbeb; border-color: #fde68a; }
+.head-score { font-size: 15px; font-weight: 700; color: var(--primary); background: #eef2ff; border-radius: 999px; padding: 2px 10px; }

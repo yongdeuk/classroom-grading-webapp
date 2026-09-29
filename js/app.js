@@ -241,7 +241,9 @@
             gradedByAIAt: sigMatch ? prev.gradedByAIAt || null : null,
           };
           s.flags = Grading.detectFlags(state.rubric, s.text);
-          if (regradeAll && s.text) applyAutoChecks(s);
+          s.blank = Grading.isBlank(state.rubric, s.text);
+          // 미기입인데 저장된 체크가 남아 있으면(예전 버전에서 인쇄 문구에 키워드가 걸림) 확인 완료 전이면 최소점으로 다시 채점
+          if ((regradeAll || (s.blank && !s.confirmed)) && s.text) applyAutoChecks(s);
           return s;
         })
         .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
@@ -317,6 +319,7 @@
     }
     s.studentNo = parseStudentNo(s.text);
     s.flags = Grading.detectFlags(state.rubric, s.text);
+    s.blank = Grading.isBlank(state.rubric, s.text);
     applyAutoChecks(s);
     renderStudentList();
     if (state.selectedUserId === s.userId) { renderDocViewer(s); renderGradingPanel(s); }
@@ -349,6 +352,7 @@
     let n = 0, kept = 0;
     for (const s of state.students) {
       s.flags = Grading.detectFlags(state.rubric, s.text);
+      s.blank = Grading.isBlank(state.rubric, s.text);
       if (s.confirmed) { kept++; continue; }
       applyAutoChecks(s);
       n++;
@@ -794,12 +798,15 @@
           <span class="confirm-dot ${s.confirmed ? 'on' : ''}"></span>
           <span class="name">${esc(s.name)}${s.studentNo ? ` <span class="stuno">(${esc(s.studentNo)})</span>` : ''}${s.resubmitted ? ' 🔄' : ''}${Grading.isSuspect(s) ? ' 🤖' : ''}</span>
           <span class="status ${statusClass(s.status)}">${esc(s.status)}</span>
-          ${s.submittedAt ? `<span class="subtime" title="제출 처리된 시각(클래스룸 기준)">${esc(fmtTime(s.submittedAt))}</span>` : ''}
           <span class="total">${Grading.total(state.rubric, s.checks, s.status)}</span>
           <button class="row-del" data-del="${esc(s.userId)}" title="목록에서 삭제(제출물을 다시 불러오면 복구 가능)">✕</button>
         </div>`
       )
       .join('');
+    // 가운데 이름 옆 점수도 함께 갱신(점수가 바뀌는 곳은 모두 목록을 다시 그림)
+    const sel = selectedStudent();
+    const dvScore = document.getElementById('dvScore');
+    if (sel && dvScore) dvScore.textContent = Grading.total(state.rubric, sel.checks, sel.status) + '점';
     wrap.querySelectorAll('.student-row').forEach((row) => {
       row.addEventListener('click', (e) => {
         if (e.target.closest('[data-del]') || e.target.closest('[data-check]')) return;
@@ -865,6 +872,7 @@
     const head = `
       <div class="detail-head">
         <h3>${esc(s.name)}${s.studentNo ? ` <span class="stuno">(${esc(s.studentNo)})</span>` : ''}</h3>
+        <span class="head-score" id="dvScore">${Grading.total(state.rubric, s.checks, s.status)}점</span>
         <span class="status ${statusClass(s.status)}">${esc(s.status)}</span>
         ${s.submittedAt ? `<span class="muted">제출: ${esc(fmtTime(s.submittedAt))}</span>` : ''}
         ${s.resubmitted ? '<span class="muted">🔄 재제출됨</span>' : ''}
