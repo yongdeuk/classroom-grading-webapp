@@ -45,6 +45,10 @@ const Api = (() => {
     async listStudents(courseId) {
       return listAll(CR + '/courses/' + courseId + '/students', 'students', {});
     },
+    // 과제 자체(첨부한 원본 학습지 = materials 포함)
+    async getCourseWork(courseId, courseWorkId) {
+      return getJson(CR + '/courses/' + courseId + '/courseWork/' + courseWorkId);
+    },
     async listSubmissions(courseId, courseWorkId) {
       return listAll(
         CR + '/courses/' + courseId + '/courseWork/' + courseWorkId + '/studentSubmissions',

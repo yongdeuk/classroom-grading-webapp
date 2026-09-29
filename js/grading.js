@@ -247,14 +247,17 @@ const Grading = (() => {
       const filledText = (label) => {
         const idx = low.indexOf(label.toLowerCase());
         if (idx < 0) return null;
-        const nl = text.indexOf('\n', idx + label.length);
-        let rest = text.slice(idx + label.length, nl >= 0 ? Math.min(nl, idx + label.length + 150) : idx + label.length + 150);
+        // 칸 내용은 같은 줄(표 오른쪽 칸)이나 다음 줄(칸 안 문단)에 올 수 있어, 다음 표 항목이
+        // 나오기 전까지 최대 3줄을 본다. 원본 학습지를 알면 원본에 원래 있던 줄(인쇄된 안내문)은 뺀다.
+        let rest = text.slice(idx + label.length, idx + label.length + 300);
         let cut = rest.length;
         for (const w of stopWords) {
           const wi = rest.toLowerCase().indexOf(w.toLowerCase());
           if (wi >= 0 && wi < cut) cut = wi;
         }
-        rest = rest.slice(0, cut).replace(/[\t]+/g, ' ').trim();
+        const lines = rest.slice(0, cut).split('\n').slice(0, 3)
+          .filter((l, i) => i === 0 || !templateKeys || !templateKeys.has(lineKey(l)));
+        rest = lines.join(' ').replace(/[\t]+/g, ' ').trim();
         return /[가-힣]{2,}|[A-Za-z]{3,}/.test(rest) ? rest : '';
       };
       const found = [], empty = [];
@@ -360,13 +363,41 @@ const Grading = (() => {
     return out;
   }
 
-  // "AI 작성 의심" 신호가 요구하는 최소 조건(requiresPresent)들이 하나도 없으면,
-  // 학생이 그냥 작성 영역을 비워 둔 것으로 보고 "미기입"으로 표시할 수 있게 알려 준다.
+  // ---- 미기입 판정 ----
+  // 과제에 첨부된 원본(빈) 학습지의 텍스트를 알면, 제출물에서 원본에 없는 줄만 "학생이 쓴 내용"으로
+  // 본다. 이름·학번 칸만 채운 경우는 쓴 것으로 치지 않는다. 원본을 모르면 코드(def)도 없고
+  // 표 칸(오버플로우 등)도 비어 있을 때만 미기입.
+  const lineKey = (l) => l.replace(/\s+/g, '');
+  let templateKeys = null;
+  function setTemplate(text) {
+    templateKeys = text ? new Set(String(text).split('\n').map(lineKey).filter(Boolean)) : null;
+  }
+  function hasTemplate() { return !!templateKeys; }
+  function writtenText(text) {
+    if (!templateKeys || !text) return '';
+    return text.split('\n').filter((l) => {
+      const k = lineKey(l);
+      if (!k || templateKeys.has(k)) return false;
+      if (/^===.*===$/.test(k) || /^\[추출실패/.test(k)) return false; // 추출기가 붙인 머리글
+      if (k.length < 40 && /(학번|이름|성명|학년|번호)/.test(k)) return false; // 신상 칸만 채운 줄
+      return true;
+    }).join('\n');
+  }
   function isBlank(r, text) {
     if (!text) return false;
+    if (templateKeys) {
+      const letters = (writtenText(text).match(/[가-힣A-Za-z0-9]/g) || []).length;
+      return letters < 20;
+    }
     const reqs = (r.flags || []).map((f) => f.requiresPresent).filter(Boolean);
     if (!reqs.length) return false;
-    return reqs.every((p) => { const re = safeRegex(p); return !re || !re.test(text); });
+    const noCode = reqs.every((p) => { const re = safeRegex(p); return !re || !re.test(text); });
+    if (!noCode) return false;
+    // 코드가 없어도 표 칸을 채웠으면 작성한 것
+    for (const g of r.groups) for (const c of g.checks) {
+      if (c.auto.type === 'filled' && detect(c.auto, sectionText(c.scope, text)).met) return false;
+    }
+    return true;
   }
 
   function presets() { return PRESETS.map((p) => ({ key: p.key, name: p.rubric.name, rubric: normalize(clone(p.rubric)) })); }
@@ -376,5 +407,6 @@ const Grading = (() => {
     AUTO_TYPES, normalize, defaultRubric, blankRubric, presets, hash,
     groupMax, rubricMax, rubricMin, groupScore, total, offStep,
     detect, explain, suggestChecks, reasonFor, detectFlags, isBlank, groupBlocked, isSuspect,
+    setTemplate, hasTemplate, writtenText,
   };
 })();

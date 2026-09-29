@@ -59,7 +59,7 @@
     for (const s of state.students) {
       students[s.userId] = {
         sig: s.sig, text: s.text, extractStatus: s.extractStatus,
-        checks: s.checks, confirmed: s.confirmed, note: s.note, reasonEdits: s.reasonEdits, comments: s.comments, aiSuspect: s.aiSuspect,
+        checks: s.checks, confirmed: s.confirmed, note: s.note, reasonEdits: s.reasonEdits, comments: s.comments, blank: s.blank, aiSuspect: s.aiSuspect,
         aiEvidence: s.aiEvidence, gradedByAI: s.gradedByAI, gradedByAIAt: s.gradedByAIAt,
       };
     }
@@ -181,6 +181,9 @@
       const subByUserId = {};
       subs.forEach((sub) => { subByUserId[sub.userId] = sub; });
 
+      // 과제에 첨부된 원본 학습지 텍스트 — 미기입 판정 기준(없거나 실패하면 코드·표 칸 유무로 판단)
+      Grading.setTemplate(await loadTemplateText());
+
       const cached = Store.load(state.courseId, state.courseWorkId);
       const cachedStudents = (cached && cached.students) || {};
 
@@ -243,7 +246,9 @@
           s.flags = Grading.detectFlags(state.rubric, s.text);
           s.blank = Grading.isBlank(state.rubric, s.text);
           // 미기입인데 저장된 체크가 남아 있으면(예전 버전에서 인쇄 문구에 키워드가 걸림) 확인 완료 전이면 최소점으로 다시 채점
-          if ((regradeAll || (s.blank && !s.confirmed)) && s.text) applyAutoChecks(s);
+          // 이전 판정으로 미기입(최소점) 처리됐는데 지금 보니 작성한 학생도 다시 채점
+          const wasBlankScored = !s.confirmed && !s.blank && (prev.blank || (Object.keys(s.checks).length && Object.values(s.checks).every((v) => !v)));
+          if ((regradeAll || (s.blank && !s.confirmed) || wasBlankScored) && s.text) applyAutoChecks(s);
           return s;
         })
         .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
@@ -277,6 +282,23 @@
       setLoadStatus('오류: ' + e.message);
     } finally {
       $('#loadBtn').disabled = false;
+    }
+  }
+
+  // 과제에 첨부한 원본 학습지(드라이브 파일)의 텍스트. 여러 개면 합친다.
+  async function loadTemplateText() {
+    try {
+      const cw = await Api.getCourseWork(state.courseId, state.courseWorkId);
+      const files = (cw.materials || [])
+        .filter((m) => m.driveFile && m.driveFile.driveFile)
+        .map((m) => ({ id: m.driveFile.driveFile.id, name: m.driveFile.driveFile.title }));
+      if (!files.length) return '';
+      for (const f of files) await ensureFileMeta(f);
+      const { text } = await Extract.extractSubmission(files.filter((f) => f.mimeType), '');
+      return text;
+    } catch (e) {
+      console.warn('원본 학습지를 불러오지 못함:', e);
+      return '';
     }
   }
 
@@ -878,7 +900,7 @@
         ${s.resubmitted ? '<span class="muted">🔄 재제출됨</span>' : ''}
       </div>
       ${Grading.isSuspect(s) ? `<div class="flag-banner">🤖 AI 작성 의심${s.aiSuspect === true ? ' (선생님이 지정)' : ''}${s.flags && s.flags.length ? '<br>· ' + s.flags.map(esc).join('<br>· ') : ''}</div>`
-        : (!absentDoc && Grading.isBlank(state.rubric, s.text) ? '<div class="blank-banner">📝 미기입 — 작성해야 할 영역이 비어 있는 것으로 보입니다.</div>' : '')}
+        : (!absentDoc && Grading.isBlank(state.rubric, s.text) ? '<div class="blank-banner">📝 미기입 — 작성해야 할 영역이 비어 있는 것으로 보입니다. ' + (Grading.hasTemplate() ? '(과제 원본 학습지와 비교해 새로 쓴 내용이 거의 없음)' : '(원본 학습지를 못 찾아 코드·표 칸이 모두 비었는지로 판단)') + '</div>' : '')}
       <div class="file-tabs">
         ${s.files
           .map(
