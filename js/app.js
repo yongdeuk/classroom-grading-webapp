@@ -1092,7 +1092,7 @@
       ${!absent ? `<div class="teacher-bar">
         <button class="btn primary small" id="teacherSaveBtn">💾 교사 수정 저장</button>
         <button class="btn ghost small" id="commentOneBtn" title="이 학생 제출 파일에 감점 근거를 댓글로 남깁니다(보내기 전에 미리보기)">💬 근거 댓글${s.feedbackPosted ? ' ✓' : ''}</button>
-        <span class="muted">✏️ 선생님 수정 ${teacherEditCount(s)}건${s.teacherSavedAt ? ' · 저장 ' + esc(new Date(s.teacherSavedAt).toLocaleString('ko-KR')) : ''} — 자동 재채점·Claude 채점을 해도 유지됩니다</span>
+        <span class="muted">${s.teacherSavedAt ? '저장 ' + esc(new Date(s.teacherSavedAt).toLocaleString('ko-KR')) + ' · ' : ''}선생님이 바꾼 체크는 자동 재채점·Claude 채점을 해도 유지됩니다</span>
       </div>` : ''}
       ${s.gradedByAI ? `<div class="ai-graded-note">🤖 Claude가 채점함 (${esc(new Date(s.gradedByAIAt).toLocaleString('ko-KR'))}) — 체크와 근거를 확인하고 필요하면 고치세요.</div>` : ''}
       ${absent ? '<p class="muted">미제출 — 0점</p>' : `
