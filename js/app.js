@@ -210,6 +210,7 @@
 
       // 기준 고르기: 방금 직접 올리거나 고친 기준 > 이 과제에 저장된 기준 > 이 수업의 마지막 기준 > 기본 기준
       let regradeAll = false, legacy = false, halfChanged = 0;
+      const OLD_IDS = ['exc_test', 'exc_msg'];
       if (state.rubricTouched) {
         regradeAll = true;
       } else if (cached && cached.rubric) {
@@ -261,7 +262,8 @@
             confirmed: sigMatch && !legacy && !mig.changed ? !!prev.confirmed : false,
             note: prev.note || '',
             reasonEdits: prev.reasonEdits || {},
-            comments: Object.assign({}, prev.comments || {}, mig.comments || {}),
+            // 예전 "-2.5점 사항" 오버플로우 코멘트는 지운다
+            comments: Object.fromEntries(Object.entries(prev.comments || {}).filter(([, v]) => !/2\.5점/.test(String(v)))),
             aiSuspect: sigMatch && prev.aiSuspect != null ? prev.aiSuspect : null,
             aiEvidence: sigMatch ? prev.aiEvidence || {} : {},
             gradedByAI: sigMatch ? !!prev.gradedByAI : false,
@@ -273,6 +275,13 @@
           };
           s.flags = Grading.detectFlags(state.rubric, s.text);
           s.blank = Grading.isBlank(state.rubric, s.text);
+          // 바뀐 항목(스택/큐 테스트 코드)은 이 학생만 새로 자동 판정, 예전 항목의 선생님 수정·근거는 정리
+          for (const id of OLD_IDS) { delete s.teacherChecks[id]; delete s.reasonEdits[id]; delete s.comments[id]; }
+          for (const id of mig.recheck || []) {
+            const g = state.rubric.groups.find((x) => x.checks.some((c) => c.id === id));
+            const c = g && g.checks.find((x) => x.id === id);
+            if (c && s.text) s.checks[id] = s.blank ? false : Grading.explain(g, c, s.text, Grading.isSuspect(s)).met;
+          }
           // 미기입인데 저장된 체크가 남아 있으면(예전 버전에서 인쇄 문구에 키워드가 걸림) 확인 완료 전이면 최소점으로 다시 채점
           // 이전 판정으로 미기입(최소점) 처리됐는데 지금 보니 작성한 학생도 다시 채점
           const wasBlankScored = !s.confirmed && !s.blank && (prev.blank || (Object.keys(s.checks).length && Object.values(s.checks).every((v) => !v)));
@@ -292,7 +301,7 @@
       $('#docViewer').innerHTML = $('#gradingPanel').innerHTML = '<p class="muted">왼쪽 목록에서 학생을 선택하세요.</p>';
       $('#docViewer').dataset.key = '';
       persist();
-      if (halfChanged) toast('예외 처리 2.5점 항목을 5점 단위(스택/큐 각 5점)로 바꿨습니다. 예전에 -2.5점이던 ' + halfChanged + '명은 5점을 주고 코멘트를 남겼습니다 — 확인 완료를 풀었으니 다시 확인해 주세요.', 8000);
+      if (halfChanged) toast('예외 처리 채점 항목이 바뀌어(스택/큐 테스트 코드로 나눔) ' + halfChanged + '명을 새로 채점했습니다 — 확인 완료를 풀었으니 다시 확인해 주세요.', 8000);
       if (legacy) toast('예전 형식의 채점 기준을 새 기준(5점 간격)으로 바꿨습니다. 확인 완료 표시는 다시 해 주세요.', 6000);
 
       const todo = state.students.filter((s) => s.status !== '미제출' && s.extractStatus !== '완료');
@@ -857,7 +866,10 @@
     const restoreBar = state.hidden.size
       ? `<div class="hidden-bar">삭제한 학생 ${state.hidden.size}명 <button class="link-btn" id="restoreHiddenBtn">모두 되돌리기</button></div>`
       : '';
-    const scoreBar = `<div class="list-tools"><label class="score-toggle"><input type="checkbox" id="showScoresChk" ${state.showScores ? 'checked' : ''}> 점수 보기</label></div>`;
+    const nSub = visible.filter((s) => s.status !== '미제출').length;
+    const nLate = visible.filter((s) => s.status === '제출(지각)').length;
+    const nBlank = visible.filter((s) => s.status !== '미제출' && s.blank).length;
+    const scoreBar = `<div class="list-tools"><span class="list-count">총 <b>${visible.length}</b>명 · 제출 ${nSub}${nLate ? ' (지각 ' + nLate + ')' : ''} · 미제출 ${visible.length - nSub}${nBlank ? ' · 미기입 ' + nBlank : ''}</span><label class="score-toggle"><input type="checkbox" id="showScoresChk" ${state.showScores ? 'checked' : ''}> 점수 보기</label></div>`;
     wrap.classList.toggle('hide-scores', !state.showScores);
     wrap.innerHTML = scoreBar + restoreBar + visible
       .map(
