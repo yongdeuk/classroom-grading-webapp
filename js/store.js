@@ -58,7 +58,7 @@ const Store = (() => {
   function setCourseRubric(courseId, rubric) { if (courseId) writeJson('grader:courseRubric:' + courseId, rubric); }
 
   function exportCsv(rubric, students, meta) {
-    const header = ['학번', '이름', '상태'].concat(rubric.groups.map((g) => g.name), ['합계', '확인', 'AI 의심', '미충족 항목 근거', '코멘트', '비고']);
+    const header = ['학번', '이름', '상태'].concat(rubric.groups.map((g) => g.name), ['합계', '확인', 'AI 의심', '교사 수정', '미충족 항목 근거', '코멘트', '비고']);
     const rows = [header];
     for (const s of students) {
       const checks = s.checks || {};
@@ -67,6 +67,9 @@ const Store = (() => {
       row.push(Grading.total(rubric, checks, s.status));
       row.push(s.confirmed ? 'Y' : '');
       row.push(s.status !== '미제출' && Grading.isSuspect(s) ? 'Y' : '');
+      // 선생님이 직접 바꾼 체크 항목
+      const tc = s.teacherChecks || {};
+      row.push(rubric.groups.flatMap((g) => g.checks).filter((c) => c.id in tc).map((c) => c.label + (tc[c.id] ? ' ✓' : ' ✗')).join(', '));
       const reasons = [];
       if (s.status !== '미제출') {
         for (const g of rubric.groups) for (const c of g.checks) {

@@ -24,6 +24,7 @@
     selectedUserId: null,
     checkedIds: new Set(), // 왼쪽 목록에서 체크해 둔(일괄 Claude 채점 대상) 학생의 userId
     viewIdx: {}, // 학생별로 가운데에 보고 있는 파일 번호
+    showScores: (() => { try { return localStorage.getItem('grader:showScores') !== '0'; } catch (e) { return true; } })(),
   };
 
   function toast(msg, ms) {
@@ -61,6 +62,7 @@
         sig: s.sig, text: s.text, extractStatus: s.extractStatus,
         checks: s.checks, confirmed: s.confirmed, note: s.note, reasonEdits: s.reasonEdits, comments: s.comments, blank: s.blank, aiSuspect: s.aiSuspect,
         aiEvidence: s.aiEvidence, gradedByAI: s.gradedByAI, gradedByAIAt: s.gradedByAIAt,
+        teacherChecks: s.teacherChecks, teacherSavedAt: s.teacherSavedAt,
       };
     }
     Store.save(state.courseId, state.courseWorkId, { rubric: state.rubric, students, hidden: Array.from(state.hidden), updatedAt: Date.now() });
@@ -241,6 +243,9 @@
             aiSuspect: sigMatch && prev.aiSuspect != null ? prev.aiSuspect : null,
             aiEvidence: sigMatch ? prev.aiEvidence || {} : {},
             gradedByAI: sigMatch ? !!prev.gradedByAI : false,
+            // 선생님 수정은 같은 제출물일 때만 유지(재제출하면 새로 채점)
+            teacherChecks: sigMatch ? prev.teacherChecks || {} : {},
+            teacherSavedAt: sigMatch ? prev.teacherSavedAt || null : null,
             gradedByAIAt: sigMatch ? prev.gradedByAIAt || null : null,
           };
           s.flags = Grading.detectFlags(state.rubric, s.text);
@@ -318,7 +323,17 @@
     if (s.status === '미제출') { s.checks = {}; return; }
     if (!s.confirmed) s.checks = Grading.suggestChecks(state.rubric, s.text, Grading.isSuspect(s));
     enforceCheckAiSuspect(s);
+    applyTeacherChecks(s);
   }
+
+  // 선생님이 직접 켜고 끈 체크는 따로 저장해 두고, 자동 재채점·Claude 채점 뒤에도 다시 덮어쓴다.
+  function applyTeacherChecks(s) {
+    if (!s.teacherChecks) return;
+    s.checks = s.checks || {};
+    for (const [id, v] of Object.entries(s.teacherChecks)) s.checks[id] = !!v;
+  }
+  const teacherEditCount = (s) => Object.keys(s.teacherChecks || {}).length
+    + Object.keys(s.reasonEdits || {}).length + Object.keys(s.comments || {}).length;
 
   // 항목별로 "AI 의심"이라고 표시해 둔 체크는 자동 채점이 다시 켜지 못하게 0점으로 고정한다.
   function enforceCheckAiSuspect(s) {
@@ -365,6 +380,7 @@
       s.flags = result.aiSuspect ? [String(result.aiSuspectReason || 'Claude가 AI 작성 의심 신호를 감지함')] : [];
     }
     enforceCheckAiSuspect(s);
+    applyTeacherChecks(s);
     s.gradedByAI = true;
     s.gradedByAIAt = Date.now();
   }
@@ -812,13 +828,15 @@
     const restoreBar = state.hidden.size
       ? `<div class="hidden-bar">삭제한 학생 ${state.hidden.size}명 <button class="link-btn" id="restoreHiddenBtn">모두 되돌리기</button></div>`
       : '';
-    wrap.innerHTML = restoreBar + visible
+    const scoreBar = `<div class="list-tools"><label class="score-toggle"><input type="checkbox" id="showScoresChk" ${state.showScores ? 'checked' : ''}> 점수 보기</label></div>`;
+    wrap.classList.toggle('hide-scores', !state.showScores);
+    wrap.innerHTML = scoreBar + restoreBar + visible
       .map(
         (s) => `
         <div class="student-row ${statusClass(s.status)} ${state.selectedUserId === s.userId ? 'selected' : ''}" data-uid="${esc(s.userId)}">
           <input type="checkbox" class="row-check" data-check="${esc(s.userId)}" title="여러 학생 선택해서 한 번에 채점" ${state.checkedIds.has(s.userId) ? 'checked' : ''}>
           <span class="confirm-dot ${s.confirmed ? 'on' : ''}"></span>
-          <span class="name">${esc(s.name)}${s.studentNo ? ` <span class="stuno">(${esc(s.studentNo)})</span>` : ''}${s.resubmitted ? ' 🔄' : ''}${Grading.isSuspect(s) ? ' 🤖' : ''}</span>
+          <span class="name">${esc(s.name)}${s.studentNo ? ` <span class="stuno">(${esc(s.studentNo)})</span>` : ''}${s.resubmitted ? ' 🔄' : ''}${Grading.isSuspect(s) ? ' 🤖' : ''}${teacherEditCount(s) ? ' <span title="선생님 수정 있음">✏️</span>' : ''}</span>
           <span class="status ${statusClass(s.status)}">${esc(s.status)}</span>
           <span class="total">${Grading.total(state.rubric, s.checks, s.status)}</span>
           <button class="row-del" data-del="${esc(s.userId)}" title="목록에서 삭제(제출물을 다시 불러오면 복구 가능)">✕</button>
@@ -862,6 +880,11 @@
         persist();
         renderStudentList();
       });
+    });
+    wrap.querySelector('#showScoresChk').addEventListener('change', (e) => {
+      state.showScores = e.target.checked;
+      try { localStorage.setItem('grader:showScores', state.showScores ? '1' : '0'); } catch (err) {}
+      renderStudentList();
     });
     const restoreBtn = wrap.querySelector('#restoreHiddenBtn');
     if (restoreBtn) restoreBtn.addEventListener('click', () => {
@@ -1013,6 +1036,7 @@
               <input type="checkbox" data-check="${esc(c.id)}" ${on ? 'checked' : ''} ${absent ? 'disabled' : ''}>
               <span class="c-label">${esc(c.label)}</span>
               <span class="c-points">+${c.points}</span>
+              ${s.teacherChecks && c.id in s.teacherChecks ? `<button class="teacher-mark" data-resetteacher="${esc(c.id)}" title="선생님이 직접 바꾼 체크 — 누르면 자동 판정으로 되돌림">✏️</button>` : ''}
               ${!absent ? `<button class="ai-mark" data-aimark="${esc(c.id)}" title="이 항목만 AI 의심으로 표시(0점 처리)">${itemSuspect ? '🤖✓' : '🤖'}</button>` : ''}
             </label>
             ${sub}
@@ -1035,6 +1059,10 @@
         <h3 style="margin:0">${esc(s.name)} 채점</h3>
         ${!absent ? `<button class="btn ghost small" id="claudeGradeBtn">🤖 Claude로 채점</button>` : ''}
       </div>
+      ${!absent ? `<div class="teacher-bar">
+        <button class="btn primary small" id="teacherSaveBtn">💾 교사 수정 저장</button>
+        <span class="muted">✏️ 선생님 수정 ${teacherEditCount(s)}건${s.teacherSavedAt ? ' · 저장 ' + esc(new Date(s.teacherSavedAt).toLocaleString('ko-KR')) : ''} — 자동 재채점·Claude 채점을 해도 유지됩니다</span>
+      </div>` : ''}
       ${s.gradedByAI ? `<div class="ai-graded-note">🤖 Claude가 채점함 (${esc(new Date(s.gradedByAIAt).toLocaleString('ko-KR'))}) — 체크와 근거를 확인하고 필요하면 고치세요.</div>` : ''}
       ${absent ? '<p class="muted">미제출 — 0점</p>' : `
       <div class="ai-box ${suspect ? 'on' : ''}">
@@ -1055,10 +1083,35 @@
     el.querySelectorAll('[data-check]').forEach((cb) => {
       cb.addEventListener('change', () => {
         s.checks[cb.dataset.check] = cb.checked;
+        s.teacherChecks = s.teacherChecks || {};
+        s.teacherChecks[cb.dataset.check] = cb.checked;
         renderGradingPanel(s);
         renderStudentList();
         persist();
       });
+    });
+    el.querySelectorAll('[data-resetteacher]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const id = btn.dataset.resetteacher;
+        delete s.teacherChecks[id];
+        // 자동 판정(또는 Claude 판정) 값으로 되돌림
+        const g = state.rubric.groups.find((x) => x.checks.some((c) => c.id === id));
+        const c = g && g.checks.find((x) => x.id === id);
+        if (c) s.checks[id] = Grading.isBlank(state.rubric, s.text) ? false : Grading.explain(g, c, s.text, Grading.isSuspect(s)).met;
+        enforceCheckAiSuspect(s);
+        renderGradingPanel(s);
+        renderStudentList();
+        persist();
+      });
+    });
+    const tSave = el.querySelector('#teacherSaveBtn');
+    if (tSave) tSave.addEventListener('click', () => {
+      s.teacherSavedAt = Date.now();
+      persist();
+      renderGradingPanel(s);
+      renderStudentList();
+      toast(s.name + ' — 선생님 수정 내용을 저장했습니다');
     });
     el.querySelectorAll('[data-aimark]').forEach((btn) => {
       btn.addEventListener('click', (e) => {
