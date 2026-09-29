@@ -1241,7 +1241,10 @@
     for (const g of r.groups) for (const c of g.checks) {
       if (!s.checks[c.id]) {
         const aiEv = s.aiEvidence && s.aiEvidence[c.id];
-        const reason = s.reasonEdits && s.reasonEdits[c.id] != null ? s.reasonEdits[c.id] : aiEv != null ? aiEv : Grading.reasonFor(g, c, s);
+        // 학생이 읽을 글이라 자동 감지의 기술적 설명(키워드 목록 등) 대신 기준의 "미충족 시 근거" 문장을 쓴다.
+        // 선생님이 고친 근거 > Claude 근거 > 기준 문장 > 자동 근거 순.
+        const reason = s.reasonEdits && s.reasonEdits[c.id] != null ? s.reasonEdits[c.id]
+          : aiEv != null ? aiEv : c.reason || Grading.reasonFor(g, c, s);
         minus.push('- ' + c.label + ' (-' + c.points + '점): ' + reason);
       } else {
         const cm = Grading.commentFor(g, c, s);
