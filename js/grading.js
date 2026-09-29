@@ -343,7 +343,8 @@ const Grading = (() => {
     if (s.reasonEdits && s.reasonEdits[c.id] != null) return s.reasonEdits[c.id];
     if (s.blank) return '미기입 — 작성해야 할 영역이 비어 있어 최소점 처리';
     const ex = explain(g, c, s.text, isSuspect(s));
-    if (ex.met) return '자동 감지로는 충족(' + ex.reason + ')으로 판단했으나 선생님이 체크를 해제함 — 근거를 적어 주세요.';
+    // 자동 감지로는 충족인데 선생님이 해제한 항목 → 빈칸으로 두어 선생님이 바로 근거를 쓰게 한다
+    if (ex.met) return '';
     return ex.reason;
   }
 

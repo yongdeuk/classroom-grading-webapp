@@ -862,10 +862,10 @@
     wrap.innerHTML = scoreBar + restoreBar + visible
       .map(
         (s) => `
-        <div class="student-row ${statusClass(s.status)} ${state.selectedUserId === s.userId ? 'selected' : ''}" data-uid="${esc(s.userId)}">
+        <div class="student-row ${statusClass(s.status)} ${state.selectedUserId === s.userId ? 'selected' : ''} ${s.status !== '미제출' && Grading.isSuspect(s) ? 'ai-row' : ''}" data-uid="${esc(s.userId)}">
           <input type="checkbox" class="row-check" data-check="${esc(s.userId)}" title="여러 학생 선택해서 한 번에 채점" ${state.checkedIds.has(s.userId) ? 'checked' : ''}>
           <span class="confirm-dot ${s.confirmed ? 'on' : ''}"></span>
-          <span class="name">${esc(s.name)}${s.studentNo ? ` <span class="stuno">(${esc(s.studentNo)})</span>` : ''}${s.resubmitted ? ' 🔄' : ''}${Grading.isSuspect(s) ? ' 🤖' : ''}${teacherEditCount(s) ? ' <span title="선생님 수정 있음">✏️</span>' : ''}</span>
+          <span class="name">${esc(s.name)}${s.studentNo ? ` <span class="stuno">(${esc(s.studentNo)})</span>` : ''}${s.resubmitted ? ' 🔄' : ''}${s.status !== '미제출' && Grading.isSuspect(s) ? ' <span class="ai-badge">🤖 AI 의심</span>' : ''}${teacherEditCount(s) ? ' <span title="선생님 수정 있음">✏️</span>' : ''}</span>
           <span class="status ${statusClass(s.status)}">${esc(s.status)}</span>
           <span class="total">${Grading.total(state.rubric, s.checks, s.status)}${s.crGrade && Number(s.crGrade.value) !== Grading.total(state.rubric, s.checks, s.status) ? `<span class="cr-diff" title="클래스룸 점수 ${esc(s.crGrade.value)}점과 다름">≠${esc(s.crGrade.value)}</span>` : ''}</span>
           <button class="row-del" data-del="${esc(s.userId)}" title="목록에서 삭제(제출물을 다시 불러오면 복구 가능)">✕</button>
@@ -1057,7 +1057,7 @@
               sub = `
                 <div class="reason-box">
                   <div class="reason-head">미충족 근거 ${aiEv != null && !edited ? '<span class="edited">🤖 Claude</span>' : ''}${edited ? '<span class="edited">수정함</span><button class="link-btn" data-resetreason="' + esc(c.id) + '">자동 근거로 되돌리기</button>' : ''}</div>
-                  <textarea data-reason="${esc(c.id)}" rows="2">${esc(defaultReason)}</textarea>
+                  <textarea data-reason="${esc(c.id)}" rows="2" placeholder="감점 근거를 입력하세요">${esc(defaultReason)}</textarea>
                 </div>`;
             }
             return `
@@ -1119,6 +1119,10 @@
         renderGradingPanel(s);
         renderStudentList();
         persist();
+        if (!cb.checked) {
+          const ta = $('#gradingPanel').querySelector('textarea[data-reason="' + cb.dataset.check + '"]');
+          if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+        }
       });
     });
     el.querySelectorAll('[data-resetteacher]').forEach((btn) => {

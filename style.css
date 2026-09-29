@@ -238,3 +238,12 @@ label.inline input { width: 70px; font-size: 12.5px; padding: 5px 8px; }
 .comment-item-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 13px; margin-bottom: 4px; }
 .comment-item textarea { width: 100%; font-size: 12.5px; line-height: 1.55; }
 .warn-inline { font-size: 11.5px; color: var(--warn); }
+/* AI 작성 의심 강조 */
+.student-row.ai-row { background: #fef2f2; border-color: #f87171; border-left: 4px solid #dc2626; }
+.student-row.ai-row.selected { box-shadow: 0 0 0 2px rgba(220,38,38,.25); }
+.ai-badge { display: inline-block; white-space: nowrap; font-size: 10.5px; font-weight: 700; color: #fff; background: #dc2626; border-radius: 999px; padding: 1px 7px; margin-left: 2px; vertical-align: 1px; }
+.flag-banner { background: #fee2e2; border: 2px solid #ef4444; color: #991b1b; font-weight: 600; }
+.ai-box.on { border: 2px solid #ef4444; background: #fee2e2; }
+.ai-box.on .c-label b { color: #b91c1c; }
+.check-item.ai-suspect { background: #fee2e2 !important; border-left: 3px solid #dc2626; }
+.reason-box textarea::placeholder { color: #dc2626; opacity: .7; }
