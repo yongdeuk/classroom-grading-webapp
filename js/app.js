@@ -185,7 +185,7 @@
       const cachedStudents = (cached && cached.students) || {};
 
       // 기준 고르기: 방금 직접 올리거나 고친 기준 > 이 과제에 저장된 기준 > 이 수업의 마지막 기준 > 기본 기준
-      let regradeAll = false, legacy = false;
+      let regradeAll = false, legacy = false, halfChanged = 0;
       if (state.rubricTouched) {
         regradeAll = true;
       } else if (cached && cached.rubric) {
@@ -219,6 +219,9 @@
           const submittedAt = turned && sub.updateTime ? sub.updateTime : null;
           const sig = files.map((f) => f.id).join(',') + '|' + answer.length + '|' + links.join(',');
           const prev = cachedStudents[userId] || {};
+          // 2.5점 항목(9/28 버전) → 5점 항목으로 변환. 한쪽만 체크돼 점수가 바뀌면 확인 완료를 풀어 다시 보게 한다.
+          const mig = Grading.migrateStudentChecks(prev.checks);
+          if (mig.changed) halfChanged++;
           const sigMatch = prev.sig === sig;
           const s = {
             userId, name,
@@ -227,8 +230,8 @@
             text: sigMatch ? prev.text || '' : '',
             studentNo: sigMatch ? parseStudentNo(prev.text || '') : '',
             extractStatus: sigMatch ? prev.extractStatus || '대기' : (files.length || answer ? '대기' : '없음'),
-            checks: prev.checks || {},
-            confirmed: sigMatch && !legacy ? !!prev.confirmed : false,
+            checks: mig.checks || {},
+            confirmed: sigMatch && !legacy && !mig.changed ? !!prev.confirmed : false,
             note: prev.note || '',
             reasonEdits: prev.reasonEdits || {},
             aiSuspect: sigMatch && prev.aiSuspect != null ? prev.aiSuspect : null,
@@ -253,6 +256,7 @@
       $('#docViewer').innerHTML = $('#gradingPanel').innerHTML = '<p class="muted">왼쪽 목록에서 학생을 선택하세요.</p>';
       $('#docViewer').dataset.key = '';
       persist();
+      if (halfChanged) toast('예외 처리 2.5점 항목을 5점 단위(스택/큐 각 5점)로 바꿨습니다. 점수가 바뀐 ' + halfChanged + '명은 확인 완료를 풀었으니 다시 확인해 주세요.', 8000);
       if (legacy) toast('예전 형식의 채점 기준을 새 기준(5점 간격)으로 바꿨습니다. 확인 완료 표시는 다시 해 주세요.', 6000);
 
       const todo = state.students.filter((s) => s.status !== '미제출' && s.extractStatus !== '완료');
@@ -430,6 +434,7 @@
     $('#rubricName').value = r.name;
     $('#rubricStep').value = r.step;
     $('#rubricBase').value = r.baseScore || 0;
+    $('#rubricBase').step = r.step;
     const offStep = (v) => Math.abs(v / r.step - Math.round(v / r.step)) > 1e-9;
 
     $('#rubricGroups').innerHTML = r.groups
@@ -475,7 +480,7 @@
           const f = input.dataset.gfield;
           if (f === 'aiBlock') g().aiBlock = input.checked;
           else if (f === 'name') g().name = input.value;
-          else if (f === 'base') g().base = Number(input.value) || 0;
+          else if (f === 'base') g().base = Grading.snap(input.value, state.rubric.step);
           else {
             const req = g().requires || { pattern: '', message: '' };
             if (f === 'reqPattern') req.pattern = input.value.trim();
@@ -500,7 +505,7 @@
           input.addEventListener('change', () => {
             const c = g().checks[ci];
             const field = input.dataset.cfield;
-            if (field === 'points') c.points = Number(input.value) || 0;
+            if (field === 'points') c.points = Grading.snap(input.value, state.rubric.step);
             else if (field === 'label') c.label = input.value;
             else if (field === 'autoType') c.auto.type = input.value;
             else if (field === 'pattern') c.auto.pattern = input.value;
@@ -544,8 +549,13 @@
   }
 
   $('#rubricName').addEventListener('change', (e) => { state.rubric.name = e.target.value || '채점 기준'; onRubricEdited(false); });
-  $('#rubricStep').addEventListener('change', (e) => { state.rubric.step = Math.max(0.5, Number(e.target.value) || 1); onRubricEdited(true); });
-  $('#rubricBase').addEventListener('change', (e) => { state.rubric.baseScore = Number(e.target.value) || 0; onRubricEdited(false); });
+  $('#rubricStep').addEventListener('change', (e) => {
+    // 간격을 바꾸면 모든 배점을 새 간격의 배수로 맞춘다
+    state.rubric.step = Math.max(1, Math.round(Number(e.target.value)) || 5);
+    state.rubric = Grading.normalize(state.rubric);
+    onRubricEdited(true);
+  });
+  $('#rubricBase').addEventListener('change', (e) => { state.rubric.baseScore = Grading.snap(e.target.value, state.rubric.step); onRubricEdited(true); });
   $('#addRubricGroupBtn').addEventListener('click', () => {
     state.rubric.groups.push({ id: 'g_' + Date.now().toString(36), name: '새 평가 영역', base: 0, requires: null, checks: [] });
     onRubricEdited(true);

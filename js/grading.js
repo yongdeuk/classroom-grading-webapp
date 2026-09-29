@@ -3,7 +3,8 @@
 // 루브릭 = { name, step, baseScore, groups: [...], flags: [...] }
 //  - 평가 영역(group)은 "기본 점수(base, 그 영역의 최저 밴드)" + 여러 개의 체크 항목(check)으로 이뤄진다.
 //    체크할 때마다 그 배점만큼 더해져서, 예) 기본 20 + 5점 체크 4개 → 20/25/30/35/40 밴드가 된다.
-//  - step: 배점 간격(정보과학은 5점). 배점이 간격에 안 맞으면 편집 화면에서 경고한다.
+//  - step: 배점 간격(기본 5점, 정수만). 소수점 배점은 없으므로 모든 배점·기본 점수는 불러올 때
+//    step의 배수(정수)로 맞춘다(snap).
 //  - baseScore: 제출한 학생의 합계 최저점(선택). 0이면 사용하지 않음.
 //  - flags: "AI 작성 의심" 신호. 하나라도 걸리면 그 학생을 AI 의심으로 자동 표시하고,
 //    교사는 학생마다 의심을 직접 체크/해제할 수 있다(student.aiSuspect: null=자동, true/false=직접).
@@ -22,7 +23,7 @@ const Grading = (() => {
   // ---- 기본 제공 기준 ----
   const INFO_SCIENCE_STACK_QUEUE = {
     name: '정보과학 — 함수를 활용한 스택·큐 프로그램 구현 (1차 수행평가)',
-    step: 2.5, // 예외 처리 항목이 스택/큐 중 한쪽만 채워도 절반 점수를 줄 수 있도록 2.5점 단위 사용
+    step: 5, // 배점은 5점 단위(소수점 없음)
     baseScore: 0,
     groups: [
       {
@@ -49,14 +50,13 @@ const Grading = (() => {
       {
         id: 'exc', name: '예외 상황 처리 및 프로그램 검증', base: 10,
         // 오버플로우·언더플로우는 스택 회차와 큐 회차에 각각 계획을 적어야 하므로, 문서를
-        // "2회차" 표시를 기준으로 앞(스택)/뒤(큐)로 나눠 각각 확인한다 — 한쪽만 채우면 절반만 인정.
+        // "2회차" 표시를 기준으로 앞(스택)/뒤(큐)로 나눠 각각 확인한다.
         checks: [
           // 유형 'filled': "오버플로우"라는 표 항목 이름 자체는 늘 인쇄돼 있으니(빈칸이어도 걸림),
           // 그 항목 뒤에 실제 내용이 채워졌는지(다음 표 항목이 나오기 전까지)를 본다.
-          { id: 'exc_s_overflow', label: '스택: 오버플로우(가득 참) 예외 처리', points: 2.5, scope: 'stack', auto: { type: 'filled', pattern: '오버플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법' }, reason: '스택의 오버플로우 처리 계획 칸이 비어 있는 것으로 보임' },
-          { id: 'exc_q_overflow', label: '큐: 오버플로우(가득 참) 예외 처리', points: 2.5, scope: 'queue', auto: { type: 'filled', pattern: '오버플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법' }, reason: '큐의 오버플로우 처리 계획 칸이 비어 있는 것으로 보임' },
-          { id: 'exc_s_underflow', label: '스택: 언더플로우(비어 있음) 예외 처리', points: 2.5, scope: 'stack', auto: { type: 'filled', pattern: '언더플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법' }, reason: '스택의 언더플로우 처리 계획 칸이 비어 있는 것으로 보임' },
-          { id: 'exc_q_underflow', label: '큐: 언더플로우(비어 있음) 예외 처리', points: 2.5, scope: 'queue', auto: { type: 'filled', pattern: '언더플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법' }, reason: '큐의 언더플로우 처리 계획 칸이 비어 있는 것으로 보임' },
+          // 스택 회차·큐 회차 각각 오버플로우·언더플로우 칸을 모두 채워야 5점(한쪽 구조만 채우면 그 구조 5점만).
+          { id: 'exc_s_flow', label: '스택: 오버플로우·언더플로우 예외 처리', points: 5, scope: 'stack', auto: { type: 'filled', pattern: '오버플로우, 언더플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법' }, reason: '스택의 오버플로우·언더플로우 처리 계획 칸이 비어 있는 것으로 보임' },
+          { id: 'exc_q_flow', label: '큐: 오버플로우·언더플로우 예외 처리', points: 5, scope: 'queue', auto: { type: 'filled', pattern: '오버플로우, 언더플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법' }, reason: '큐의 오버플로우·언더플로우 처리 계획 칸이 비어 있는 것으로 보임' },
           { id: 'exc_test', label: '테스트 코드로 연산 실행 결과 검증', points: 5, auto: { type: 'regex', pattern: 'print\\s*\\(' }, reason: '실행 결과를 확인하는 테스트 코드(print)가 없음' },
           { id: 'exc_msg', label: '예외 상황을 알리는 처리(오류 메시지·raise·반환값 등)', points: 5, auto: { type: 'keyword', pattern: 'raise, except, error, 오류, 에러, 예외, return none' }, reason: '예외 상황을 알리는 처리(메시지·raise 등)가 확인되지 않음' },
         ],
@@ -75,6 +75,39 @@ const Grading = (() => {
   const LEGACY_DEFAULT_IDS = ['design_s_push', 'impl_s_push', 'exc_overflow'];
 
   const clone = (o) => JSON.parse(JSON.stringify(o));
+  // 배점은 소수점 없이 step(기본 5)의 배수로만.
+  function snap(v, step) {
+    const n = Number(v) || 0;
+    return Math.max(0, Math.round(n / step) * step);
+  }
+
+  // 9/28 버전의 2.5점짜리 예외 처리 4항목 → 5점짜리 2항목(스택/큐)으로 합친다.
+  const HALF_PAIRS = { exc_s_flow: ['exc_s_overflow', 'exc_s_underflow'], exc_q_flow: ['exc_q_overflow', 'exc_q_underflow'] };
+  const HALF_IDS = Object.values(HALF_PAIRS).flat();
+  function migrateHalfGroup(g) {
+    if (!(g.checks || []).some((c) => HALF_IDS.includes(c.id))) return g;
+    const preset = INFO_SCIENCE_STACK_QUEUE.groups.find((x) => x.id === 'exc');
+    const out = [];
+    for (const c of g.checks) {
+      if (!HALF_IDS.includes(c.id)) { out.push(c); continue; }
+      const newId = Object.keys(HALF_PAIRS).find((k) => HALF_PAIRS[k].includes(c.id));
+      if (!out.some((x) => x.id === newId)) out.push(clone(preset.checks.find((x) => x.id === newId)));
+    }
+    return Object.assign({}, g, { checks: out });
+  }
+  // 학생 체크도 같이 변환: 두 칸 모두 체크돼 있어야 합친 항목 체크. lost=한쪽만 체크돼 있던 경우(점수 변동)
+  function migrateStudentChecks(checks) {
+    if (!checks || !HALF_IDS.some((id) => id in checks)) return { checks, changed: false };
+    const out = Object.assign({}, checks);
+    let changed = false;
+    for (const [newId, [a, b]] of Object.entries(HALF_PAIRS)) {
+      if (!(a in out) && !(b in out)) continue;
+      out[newId] = !!out[a] && !!out[b];
+      if (!!out[a] !== !!out[b]) changed = true;
+      delete out[a]; delete out[b];
+    }
+    return { checks: out, changed };
+  }
   const CLASS_RE = '\\bclass\\s+\\w+';
 
   function defaultRubric() { return normalize(clone(INFO_SCIENCE_STACK_QUEUE)); }
@@ -90,12 +123,13 @@ const Grading = (() => {
   function normalize(raw) {
     if (!raw) return defaultRubric();
     if (isLegacyDefault(raw)) return defaultRubric();
-    let r = Array.isArray(raw) ? { name: '이전 채점 기준', step: 1, baseScore: 40, groups: raw } : Object.assign({}, raw);
+    let r = Array.isArray(raw) ? { name: '이전 채점 기준', step: 5, baseScore: 40, groups: raw } : Object.assign({}, raw);
     r.name = String(r.name || '채점 기준');
-    r.step = Math.max(0.5, Number(r.step) || 1);
-    r.baseScore = Number(r.baseScore) || 0;
+    // 소수점 간격(예: 0.5, 2.5)은 쓰지 않음 → 기본 5점 간격으로
+    r.step = Number.isInteger(Number(r.step)) && Number(r.step) >= 1 ? Number(r.step) : 5;
+    r.baseScore = snap(r.baseScore, r.step);
     const groupIds = new Set();
-    r.groups = (r.groups || []).map((g, gi) => {
+    r.groups = (r.groups || []).map(migrateHalfGroup).map((g, gi) => {
       const name = String(g.name || '평가 영역 ' + (gi + 1));
       let gid = g.id || 'g_' + hash(name);
       while (groupIds.has(gid)) gid += '_';
@@ -113,9 +147,9 @@ const Grading = (() => {
         const type = c.auto && AUTO_TYPES[c.auto.type] ? c.auto.type : 'none';
         const scope = c.scope === 'stack' || c.scope === 'queue' ? c.scope : '';
         const stopAt = c.auto && c.auto.stopAt ? String(c.auto.stopAt) : '';
-        return { id: cid, label, points: Number(c.points) || 0, auto: { type, pattern: String((c.auto && c.auto.pattern) || ''), stopAt }, reason: String(c.reason || ''), scope };
+        return { id: cid, label, points: snap(c.points, r.step), auto: { type, pattern: String((c.auto && c.auto.pattern) || ''), stopAt }, reason: String(c.reason || ''), scope };
       });
-      return { id: gid, name, base: Number(g.base) || 0, requires, aiBlock, checks };
+      return { id: gid, name, base: snap(g.base, r.step), requires, aiBlock, checks };
     });
     if (r.groups.some((g) => g.aiBlock) && !(r.flags || []).some((f) => f && f.pattern === CLASS_RE) && Array.isArray(raw)) {
       r.flags = [{ type: 'missing', pattern: CLASS_RE, message: 'class 없이 구현됨' }];
@@ -192,22 +226,31 @@ const Grading = (() => {
     if (auto.type === 'filled') {
       // "라벨" 항목 자체(표 헤더 등)는 늘 문서에 인쇄돼 있어 단순 키워드로는 빈칸도 항상
       // 걸리므로, 그 라벨 바로 뒤(다음 표 라벨이 나오기 전까지)에 실제 내용이 채워졌는지 본다.
-      const label = (auto.pattern || '').trim();
-      if (!label) return { met: false, manual: true, evidence: '' };
-      const idx = low.indexOf(label.toLowerCase());
-      if (idx < 0) return { met: false, evidence: '"' + label + '" 항목 자체를 문서에서 찾지 못함' };
-      const nl = text.indexOf('\n', idx + label.length);
-      let rest = text.slice(idx + label.length, nl >= 0 ? Math.min(nl, idx + label.length + 150) : idx + label.length + 150);
-      const stopWords = splitKw(auto.stopAt || label);
-      let cut = rest.length;
-      for (const w of stopWords) {
-        const wi = rest.toLowerCase().indexOf(w.toLowerCase());
-        if (wi >= 0 && wi < cut) cut = wi;
+      // 라벨을 쉼표로 여러 개 주면 모두 채워져야 충족.
+      const labels = splitKw(auto.pattern);
+      if (!labels.length) return { met: false, manual: true, evidence: '' };
+      const stopWords = splitKw(auto.stopAt || auto.pattern);
+      const filledText = (label) => {
+        const idx = low.indexOf(label.toLowerCase());
+        if (idx < 0) return null;
+        const nl = text.indexOf('\n', idx + label.length);
+        let rest = text.slice(idx + label.length, nl >= 0 ? Math.min(nl, idx + label.length + 150) : idx + label.length + 150);
+        let cut = rest.length;
+        for (const w of stopWords) {
+          const wi = rest.toLowerCase().indexOf(w.toLowerCase());
+          if (wi >= 0 && wi < cut) cut = wi;
+        }
+        rest = rest.slice(0, cut).replace(/[\t]+/g, ' ').trim();
+        return /[가-힣]{2,}|[A-Za-z]{3,}/.test(rest) ? rest : '';
+      };
+      const found = [], empty = [];
+      for (const label of labels) {
+        const t = filledText(label);
+        if (t) found.push('"' + label + '": "' + t.slice(0, 40) + '"');
+        else empty.push('"' + label + '"' + (t === null ? '(항목 없음)' : ''));
       }
-      rest = rest.slice(0, cut).replace(/[	]+/g, ' ').trim();
-      const filled = /[가-힣]{2,}|[A-Za-z]{3,}/.test(rest);
-      if (filled) return { met: true, evidence: '"' + label + '" 항목에 내용이 채워짐: "' + rest.slice(0, 60) + '"' };
-      return { met: false, evidence: '"' + label + '" 항목이 비어 있는 것으로 보임(표/칸에 내용이 채워지지 않음)' };
+      if (!empty.length) return { met: true, evidence: '내용이 채워짐 — ' + found.join(', ') };
+      return { met: false, evidence: empty.join(', ') + ' 칸이 비어 있는 것으로 보임(표/칸에 내용이 채워지지 않음)' };
     }
     return { met: false, manual: true, evidence: '' };
   }
@@ -302,6 +345,7 @@ const Grading = (() => {
   function presets() { return PRESETS.map((p) => ({ key: p.key, name: p.rubric.name, rubric: normalize(clone(p.rubric)) })); }
 
   return {
+    snap, migrateStudentChecks,
     AUTO_TYPES, normalize, defaultRubric, blankRubric, presets, hash,
     groupMax, rubricMax, rubricMin, groupScore, total, offStep,
     detect, explain, suggestChecks, reasonFor, detectFlags, isBlank, groupBlocked, isSuspect,

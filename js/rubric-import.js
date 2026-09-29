@@ -57,7 +57,7 @@ const RubricImport = (() => {
     for (const r of rows.slice(0, h)) {
       const [k, v] = [r[0] || '', r[1] || ''];
       if (/이름|제목|과제/.test(k) && v) rubric.name = v;
-      else if (/간격/.test(k) && Number(v)) rubric.step = Number(v);
+      else if (/간격/.test(k) && Number(v) >= 1) rubric.step = Math.round(Number(v));
       else if (/최저|기본\s*점수/.test(k) && v !== '') rubric.baseScore = Number(v) || 0;
     }
 
@@ -269,7 +269,7 @@ const RubricImport = (() => {
    - 체크 항목 배점의 합 = (그 영역 최고점 - base)
    - 한 수준씩 올라갈 때 추가로 충족해야 하는 요소를 체크 항목으로 나눈다. 그러면 체크를 하나씩 더할 때마다 다음 수준 점수가 된다.
    자료가 이미 항목별 배점(체크리스트)이면 base = 0으로 두고 그대로 옮긴다.
-3. step = 점수 간격(수준 사이 점수 차이, 예: 5). 알 수 없으면 ${stepHint}. 모든 체크 항목 배점과 base는 step의 배수여야 한다.
+3. step = 점수 간격(수준 사이 점수 차이, 예: 5). 알 수 없으면 ${stepHint}. 소수점 배점(예: 2.5, 7.5)은 절대 쓰지 않는다 — 모든 체크 항목 배점과 base는 정수이며 step의 배수여야 한다. 한 수준을 나눠야 해서 소수점이 생길 것 같으면 체크 항목을 합쳐 step 단위로 맞춘다.
 4. 자료에 없는 기준을 지어내지 않는다. 체크 항목(label)은 채점기준표의 표현을 살려 짧고 구체적으로 쓴다.
 5. 자동 감지: 학생 제출물(코드, 보고서 등의 텍스트)에서 찾을 수 있는 구체적인 단어로 판단할 수 있으면
    autoType "keyword"(키워드 중 하나라도 있으면 충족) 또는 "keywordAll"(모두 있어야 충족),
