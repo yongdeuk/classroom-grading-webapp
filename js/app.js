@@ -86,6 +86,25 @@
   }
   document.querySelectorAll('.tab-btn').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
   $('#settingsTabBtn').addEventListener('click', () => showTab('rubric'));
+  // 제목 클릭 → 처음 화면(수업·과제 선택). 새로고침하면 로그인이 풀리므로 화면만 초기 상태로 돌린다.
+  // 채점한 내용은 이미 저장돼 있어 같은 과제를 다시 불러오면 그대로 이어진다.
+  $('#homeLink').addEventListener('click', (e) => {
+    e.preventDefault();
+    if (state.loaded) persist();
+    state.loaded = false;
+    state.students = [];
+    state.selectedUserId = null;
+    state.checkedIds.clear();
+    Grading.setTemplate(null);
+    $('#workArea').classList.add('hidden');
+    $('#gradeEmpty').classList.remove('hidden');
+    $('#docViewer').dataset.key = '';
+    $('#pickerSummary').classList.add('hidden');
+    $('#pickerForm').classList.remove('hidden');
+    setLoadStatus('');
+    showTab('grade');
+    window.scrollTo(0, 0);
+  });
   $('#changeAssignBtn').addEventListener('click', () => {
     $('#pickerSummary').classList.add('hidden');
     $('#pickerForm').classList.remove('hidden');
