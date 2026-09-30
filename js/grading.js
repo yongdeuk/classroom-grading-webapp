@@ -311,7 +311,7 @@ const Grading = (() => {
       const reEsc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const findCell = (label) => {
         const body = label.replace(/\s+/g, '').split('').map(reEsc).join('\\s*');
-        const m = new RegExp('(^|[\\n\\t|])[ \\u00a0]*' + body + '[ \\u00a0]*[:：]?(?=[\\t\\n|]|$)', 'i').exec(text);
+        const m = new RegExp('(^|[\\r\\n\\t|])[ \\u00a0]*' + body + '[ \\u00a0]*[:：]?(?=[\\t\\r\\n|]|$)', 'i').exec(text);
         if (m) return m.index + m[0].length - label.length; // 뒤 코드가 idx + label.length 를 쓰므로 맞춰 줌
         return low.lastIndexOf(label.toLowerCase());
       };
