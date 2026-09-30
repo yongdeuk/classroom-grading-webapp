@@ -16,7 +16,7 @@ const Grading = (() => {
 
   // 기본 제공 기준을 고치면 올리는 번호. 저장돼 있던 기준(과제별 복사본)은 불러올 때 이 번호를 보고
   // 기본 제공 항목의 자동 감지 규칙·근거 문장을 새 것으로 맞춘다(배점·이름은 선생님 것 유지).
-  const PRESET_VERSION = 5;
+  const PRESET_VERSION = 6; // 6: 9/30 변경(활동1·2·4 표 기준 판정)을 되돌리고 9/29 방식으로 복귀
 
   function hash(str) {
     let h = 5381;
@@ -28,30 +28,28 @@ const Grading = (() => {
   const INFO_SCIENCE_STACK_QUEUE = {
     name: '정보과학 — 함수를 활용한 스택·큐 프로그램 구현 (1차 수행평가)',
     step: 5, // 배점은 5점 단위(소수점 없음)
-    presetVersion: 5,
+    presetVersion: 6,
     baseScore: 0,
     groups: [
       {
         id: 'design', name: '자료구조 및 함수 설계의 적절성', base: 20,
         checks: [
-          // 설계는 각 회차 "활동1. 자료구조 및 함수 설계" 표의 칸을 채웠으면 인정(함수명은 학생이 바꿔 쓰므로 키워드 불필요)
-          { id: 'design_s_io', label: '스택: 삽입·삭제 연산 설계', points: 5, scope: 'stack', auto: { type: 'filled', pattern: '스택 삽입(등록), 스택 삭제(취소/복구)', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 스택 삽입(등록), 스택 삭제(취소/복구), (자유 추가)', within: '활동1' }, reason: '스택 활동1 설계표의 삽입·삭제 연산 칸(함수명 등)이 비어 있음' },
-          { id: 'design_s_peek', label: '스택: 추가 연산(조회·상태 확인 등) 설계', points: 5, scope: 'stack', auto: { type: 'filled', pattern: '(자유 추가)', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 스택 삽입(등록), 스택 삭제(취소/복구), (자유 추가)', within: '활동1' }, reason: '스택 활동1 설계표의 추가 연산(자유 추가) 칸이 비어 있음' },
-          { id: 'design_q_io', label: '큐: 삽입·삭제 연산 설계', points: 5, scope: 'queue', auto: { type: 'filled', pattern: '큐 삽입(접수), 큐 삭제(처리)', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 큐 삽입(접수), 큐 삭제(처리), (자유 추가)', within: '활동1' }, reason: '큐 활동1 설계표의 삽입·삭제 연산 칸(함수명 등)이 비어 있음' },
-          { id: 'design_q_peek', label: '큐: 추가 연산(조회·상태 확인 등) 설계', points: 5, scope: 'queue', auto: { type: 'filled', pattern: '(자유 추가)', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 큐 삽입(접수), 큐 삭제(처리), (자유 추가)', within: '활동1' }, reason: '큐 활동1 설계표의 추가 연산(자유 추가) 칸이 비어 있음' },
+          { id: 'design_s_io', label: '스택: 삽입(push)·삭제(pop) 연산 설계', points: 5, auto: { type: 'keywordAll', pattern: 'push, pop' }, reason: '스택의 삽입·삭제 연산 설계가 확인되지 않음' },
+          { id: 'design_s_peek', label: '스택: 조회(peek)·상태 확인(isEmpty) 설계', points: 5, auto: { type: 'regex', pattern: '(peek|top|조회)[\\s\\S]*(is_?empty|비어)|(is_?empty|비어)[\\s\\S]*(peek|top|조회)' }, reason: '스택의 조회·상태 확인 연산 설계가 확인되지 않음' },
+          { id: 'design_q_io', label: '큐: 삽입(enqueue)·삭제(dequeue) 연산 설계', points: 5, auto: { type: 'keywordAll', pattern: 'enqueue, dequeue' }, reason: '큐의 삽입·삭제 연산 설계가 확인되지 않음' },
+          { id: 'design_q_peek', label: '큐: 조회(front/peek)·상태 확인 설계', points: 5, auto: { type: 'regex', pattern: '(front|peek|조회)[\\s\\S]*(is_?empty|비어)|(is_?empty|비어)[\\s\\S]*(front|peek|조회)' }, reason: '큐의 조회·상태 확인 연산 설계가 확인되지 않음' },
         ],
       },
       {
         id: 'impl', name: '함수를 활용한 스택·큐 연산 구현', base: 10,
-        // 구현은 학생이 활동1 설계표에 적은 함수명이 활동3 코드에 def로 정의돼 있는지로 판정(유형 'defFromTable').
         // class 없이 구현하면(교과서의 class Stack/Queue를 변경하라는 요구사항 위반) AI 작성 의심 →
         // 이 영역은 기본 점수만. 교사가 의심을 해제하면 다시 자동 채점된다.
         aiBlock: true,
         checks: [
-          { id: 'impl_s_io', label: '스택: 설계한 삽입·삭제 함수를 코드로 구현(활동3)', points: 5, scope: 'stack', auto: { type: 'defFromTable', pattern: '스택 삽입(등록), 스택 삭제(취소/복구)', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 스택 삽입(등록), 스택 삭제(취소/복구), (자유 추가)', within: '활동1' }, reason: '스택 활동1 설계표에 적은 삽입·삭제 함수명이 활동3 코드에 def로 정의되어 있지 않음' },
-          { id: 'impl_s_peek', label: '스택: 설계한 추가 연산 함수를 코드로 구현(활동3)', points: 5, scope: 'stack', auto: { type: 'defFromTable', pattern: '(자유 추가)', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 스택 삽입(등록), 스택 삭제(취소/복구), (자유 추가)', within: '활동1' }, reason: '스택 활동1 설계표에 적은 추가 연산 함수명이 활동3 코드에 def로 정의되어 있지 않음' },
-          { id: 'impl_q_io', label: '큐: 설계한 삽입·삭제 함수를 코드로 구현(활동3)', points: 5, scope: 'queue', auto: { type: 'defFromTable', pattern: '큐 삽입(접수), 큐 삭제(처리)', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 큐 삽입(접수), 큐 삭제(처리), (자유 추가)', within: '활동1' }, reason: '큐 활동1 설계표에 적은 삽입·삭제 함수명이 활동3 코드에 def로 정의되어 있지 않음' },
-          { id: 'impl_q_peek', label: '큐: 설계한 추가 연산 함수를 코드로 구현(활동3)', points: 5, scope: 'queue', auto: { type: 'defFromTable', pattern: '(자유 추가)', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 큐 삽입(접수), 큐 삭제(처리), (자유 추가)', within: '활동1' }, reason: '큐 활동1 설계표에 적은 추가 연산 함수명이 활동3 코드에 def로 정의되어 있지 않음' },
+          { id: 'impl_s_io', label: '스택 push·pop 함수 구현', points: 5, auto: { type: 'regex', pattern: '(?=[\\s\\S]*def\\s+push)(?=[\\s\\S]*def\\s+pop)' }, reason: 'push 또는 pop 함수 정의(def)가 없음' },
+          { id: 'impl_s_peek', label: '스택 peek·isEmpty 함수 구현', points: 5, auto: { type: 'regex', pattern: '(?=[\\s\\S]*def\\s+(peek|top))(?=[\\s\\S]*def\\s+is_?empty)' }, reason: 'peek 또는 isEmpty 함수 정의(def)가 없음' },
+          { id: 'impl_q_io', label: '큐 enqueue·dequeue 함수 구현', points: 5, auto: { type: 'regex', pattern: '(?=[\\s\\S]*def\\s+enqueue)(?=[\\s\\S]*def\\s+dequeue)' }, reason: 'enqueue 또는 dequeue 함수 정의(def)가 없음' },
+          { id: 'impl_q_peek', label: '큐 peek(front)·isEmpty 함수 구현', points: 5, auto: { type: 'regex', pattern: '(?=[\\s\\S]*def\\s+(peek|front))(?=[\\s\\S]*def\\s+is_?empty)' }, reason: '큐의 peek(front) 또는 isEmpty 함수 정의(def)가 없음' },
         ],
       },
       {
@@ -63,12 +61,11 @@ const Grading = (() => {
           // 그 항목 뒤에 실제 내용이 채워졌는지(다음 표 항목이 나오기 전까지)를 본다.
           // 스택 회차·큐 회차 각각 5점. 오버플로우·언더플로우 중 한 칸만 채웠으면 5점은 주고,
           // 빈 칸은 "예전 기준 -2.5점 사항"으로 코멘트에 남긴다(배점은 5점 단위로만).
-          { id: 'exc_s_flow', label: '스택: 오버플로우·언더플로우 예외 처리', points: 5, scope: 'stack', auto: { type: 'filled', pattern: '오버플로우, 언더플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법', within: '활동2' }, reason: '스택의 오버플로우·언더플로우 처리 계획 칸이 비어 있는 것으로 보임' },
-          { id: 'exc_q_flow', label: '큐: 오버플로우·언더플로우 예외 처리', points: 5, scope: 'queue', auto: { type: 'filled', pattern: '오버플로우, 언더플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법', within: '활동2' }, reason: '큐의 오버플로우·언더플로우 처리 계획 칸이 비어 있는 것으로 보임' },
-          // 테스트 검증은 각 회차의 "활동4. 테스트 케이스 및 실행 결과 검증" 표에 학생이 실제로
-          // 적었는지로 본다(활동3 코드 안의 print는 인정하지 않음). 유형 'section' 참고.
-          { id: 'exc_s_test', label: '스택: 테스트 코드로 연산 실행 결과 검증', points: 5, scope: 'stack', auto: { type: 'section', pattern: '활동4', stopAt: '번호, 입력값(수행 동작), 예상 출력, 실제 출력, 일치 여부' }, reason: '스택 활동4(테스트 케이스 및 실행 결과 검증) 표가 비어 있음' },
-          { id: 'exc_q_test', label: '큐: 테스트 코드로 연산 실행 결과 검증', points: 5, scope: 'queue', auto: { type: 'section', pattern: '활동4', stopAt: '번호, 입력값(수행 동작), 예상 출력, 실제 출력, 일치 여부' }, reason: '큐 활동4(테스트 케이스 및 실행 결과 검증) 표가 비어 있음' },
+          { id: 'exc_s_flow', label: '스택: 오버플로우·언더플로우 예외 처리', points: 5, scope: 'stack', auto: { type: 'filled', pattern: '오버플로우, 언더플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법' }, reason: '스택의 오버플로우·언더플로우 처리 계획 칸이 비어 있는 것으로 보임' },
+          { id: 'exc_q_flow', label: '큐: 오버플로우·언더플로우 예외 처리', points: 5, scope: 'queue', auto: { type: 'filled', pattern: '오버플로우, 언더플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법' }, reason: '큐의 오버플로우·언더플로우 처리 계획 칸이 비어 있는 것으로 보임' },
+          // 테스트 코드도 스택 회차·큐 회차를 나눠 각각 확인("2회차" 표시 기준)
+          { id: 'exc_s_test', label: '스택: 테스트 코드로 연산 실행 결과 검증', points: 5, scope: 'stack', auto: { type: 'regex', pattern: 'print\\s*\\(' }, reason: '스택 연산의 실행 결과를 확인하는 테스트 코드(print)가 없음' },
+          { id: 'exc_q_test', label: '큐: 테스트 코드로 연산 실행 결과 검증', points: 5, scope: 'queue', auto: { type: 'regex', pattern: 'print\\s*\\(' }, reason: '큐 연산의 실행 결과를 확인하는 테스트 코드(print)가 없음' },
         ],
       },
     ],
@@ -85,6 +82,9 @@ const Grading = (() => {
     '스택: 삽입(push)·삭제(pop) 연산 설계', '스택: 조회(peek)·상태 확인(isEmpty) 설계',
     '큐: 삽입(enqueue)·삭제(dequeue) 연산 설계', '큐: 조회(front/peek)·상태 확인 설계',
     '스택 push·pop 함수 구현', '스택 peek·isEmpty 함수 구현', '큐 enqueue·dequeue 함수 구현', '큐 peek(front)·isEmpty 함수 구현',
+    '스택: 삽입·삭제 연산 설계', '스택: 추가 연산(조회·상태 확인 등) 설계', '큐: 삽입·삭제 연산 설계', '큐: 추가 연산(조회·상태 확인 등) 설계',
+    '스택: 설계한 삽입·삭제 함수를 코드로 구현(활동3)', '스택: 설계한 추가 연산 함수를 코드로 구현(활동3)',
+    '큐: 설계한 삽입·삭제 함수를 코드로 구현(활동3)', '큐: 설계한 추가 연산 함수를 코드로 구현(활동3)',
   ];
 
   const PRESETS = [{ key: 'info-stack-queue', rubric: INFO_SCIENCE_STACK_QUEUE }];
@@ -183,7 +183,7 @@ const Grading = (() => {
         checks: (g0.checks || []).map((c0) => {
           const pc = presetChecks[c0.id];
           const same = (a, b) => !!a && (a.type || 'none') === (b.type || 'none') && (a.pattern || '') === (b.pattern || '') && (a.stopAt || '') === (b.stopAt || '') && (a.within || '') === (b.within || '');
-          if (!pc || (same(c0.auto, pc.auto) && (c0.scope || '') === (pc.scope || ''))) return c0;
+          if (!pc || (same(c0.auto, pc.auto) && (c0.scope || '') === (pc.scope || '') && (c0.label === pc.label || !OLD_PRESET_LABELS.includes(c0.label)))) return c0;
           synced.push(c0.id);
           const label = OLD_PRESET_LABELS.includes(c0.label) ? pc.label : c0.label;
           return Object.assign({}, c0, { label, auto: clone(pc.auto), scope: pc.scope || '', reason: pc.reason });
@@ -268,20 +268,11 @@ const Grading = (() => {
   function detect(auto, text, fullText) {
     if (!auto || auto.type === 'none') return { met: false, manual: true, evidence: '' };
     if (!text) return { met: false, evidence: '' };
-    // within(예: "활동1")이 있으면 키워드·정규식은 그 활동 구역(안내문 줄 제외) 안에서만 찾는다
-    if (auto.within && auto.type !== 'filled' && auto.type !== 'section' && auto.type !== 'defFromTable') {
-      const b = sectionBody(text, auto.within);
-      if (b == null) return { met: false, evidence: '"' + auto.within + '" 구역을 문서에서 찾지 못함' };
-      text = b.split('\n').filter((l) => !/하시오\.?\s*$/.test(l.trim())).join('\n');
-      if (!text.trim()) return { met: false, evidence: '"' + auto.within + '" 구역이 비어 있음' };
-    }
     const low = text.toLowerCase();
-    // 키워드·정규식은 학습지에 원래 인쇄된 문구(원본과 같은 줄)에 걸리지 않도록, 원본을 알면 학생이 쓴 줄에서만 찾는다.
     if (auto.type === 'keyword' || auto.type === 'keywordAll') {
       const kws = splitKw(auto.pattern);
       if (!kws.length) return { met: false, manual: true, evidence: '' };
-      const own = studentOnly(text).toLowerCase();
-      const found = kws.filter((k) => own.includes(k.toLowerCase()));
+      const found = kws.filter((k) => low.includes(k.toLowerCase()));
       const missing = kws.filter((k) => !found.includes(k));
       const met = auto.type === 'keyword' ? found.length > 0 : missing.length === 0;
       if (met) return { met, evidence: '키워드 발견: ' + found.join(', ') };
@@ -295,10 +286,43 @@ const Grading = (() => {
     if (auto.type === 'regex') {
       const re = safeRegex(auto.pattern);
       if (!re) return { met: false, evidence: '정규식 오류: ' + auto.pattern };
-      const own = studentOnly(text);
-      const m = re.exec(own);
-      if (m) return { met: true, evidence: m[0] ? '일치: ' + snippet(own, m.index, m[0].length) : '조건 일치' };
+      const m = re.exec(text);
+      if (m) return { met: true, evidence: m[0] ? '일치: ' + snippet(text, m.index, m[0].length) : '조건 일치' };
       return { met: false, evidence: '제출물에서 패턴 /' + auto.pattern + '/ 과 일치하는 부분을 찾지 못함' };
+    }
+    if (auto.type === 'filled') {
+      // "라벨" 항목 자체(표 헤더 등)는 늘 문서에 인쇄돼 있어 단순 키워드로는 빈칸도 항상
+      // 걸리므로, 그 라벨 바로 뒤(다음 표 라벨이 나오기 전까지)에 실제 내용이 채워졌는지 본다.
+      // 라벨을 쉼표로 여러 개 주면 모두 채워져야 충족.
+      const labels = splitKw(auto.pattern);
+      if (!labels.length) return { met: false, manual: true, evidence: '' };
+      const stopWords = splitKw(auto.stopAt || auto.pattern);
+      const filledText = (label) => {
+        const idx = low.indexOf(label.toLowerCase());
+        if (idx < 0) return null;
+        // 칸 내용은 같은 줄(표 오른쪽 칸)이나 다음 줄(칸 안 문단)에 올 수 있어, 다음 표 항목이
+        // 나오기 전까지 최대 3줄을 본다. 원본 학습지를 알면 원본에 원래 있던 줄(인쇄된 안내문)은 뺀다.
+        let rest = text.slice(idx + label.length, idx + label.length + 300);
+        let cut = rest.length;
+        for (const w of stopWords) {
+          const wi = rest.toLowerCase().indexOf(w.toLowerCase());
+          if (wi >= 0 && wi < cut) cut = wi;
+        }
+        const lines = rest.slice(0, cut).split('\n').slice(0, 3)
+          .filter((l, i) => i === 0 || !templateKeys || !templateKeys.has(lineKey(l)));
+        rest = lines.join(' ').replace(/[\t]+/g, ' ').trim();
+        return /[가-힣]{2,}|[A-Za-z]{3,}/.test(rest) ? rest : '';
+      };
+      const found = [], empty = [];
+      for (const label of labels) {
+        const t = filledText(label);
+        if (t) found.push('"' + label + '": "' + t.slice(0, 40) + '"');
+        else empty.push('"' + label + '"' + (t === null ? '(항목 없음)' : ''));
+      }
+      if (!empty.length) return { met: true, evidence: '내용이 채워짐 — ' + found.join(', ') };
+      // 일부만 채움: 배점은 5점 단위라 쪼개지 않고 이 항목 점수는 준다.
+      if (found.length) return { met: true, partial: true, evidence: '일부 채워짐 — ' + found.join(', ') };
+      return { met: false, evidence: empty.join(', ') + ' 칸이 비어 있는 것으로 보임(표/칸에 내용이 채워지지 않음)' };
     }
     if (auto.type === 'defFromTable') {
       // 활동1 설계표의 행(pattern)에서 학생이 적은 함수명을 읽어, 그 이름이 코드에 "def 이름("으로
@@ -357,59 +381,6 @@ const Grading = (() => {
         return { met: true, evidence: '"' + head + '" 작성됨: "' + written.replace(/\s+/g, ' ').slice(0, 60) + '"' };
       }
       return { met: false, evidence: '"' + head + '" 구역(표)이 비어 있음' };
-    }
-    if (auto.type === 'filled') {
-      // "라벨" 항목 자체(표 헤더 등)는 늘 문서에 인쇄돼 있어 단순 키워드로는 빈칸도 항상
-      // 걸리므로, 그 라벨 바로 뒤(다음 표 라벨이 나오기 전까지)에 실제 내용이 채워졌는지 본다.
-      // 라벨을 쉼표로 여러 개 주면 모두 채워져야 충족.
-      const labels = splitKw(auto.pattern);
-      if (!labels.length) return { met: false, manual: true, evidence: '' };
-      const stopWords = splitKw(auto.stopAt || auto.pattern);
-      // within(예: "활동2")이 있으면 그 활동 구역 안에서만 찾고, 안내문(…하시오) 줄은 뺀다.
-      let region = text;
-      if (auto.within) {
-        const b = sectionBody(text, auto.within);
-        if (b == null) return { met: false, evidence: '"' + auto.within + '" 구역을 문서에서 찾지 못함' };
-        region = b;
-      }
-      region = region.split('\n').filter((l) => !/하시오\.?\s*$/.test(l.trim())).join('\n');
-      const rlow = region.toLowerCase();
-      const filledAt = (label, idx) => {
-        // 칸 내용은 같은 줄(표 오른쪽 칸)이나 다음 줄(칸 안 문단)에 올 수 있어, 다음 표 항목이
-        // 나오기 전까지 최대 3줄을 본다. 원본 학습지를 알면 원본에 원래 있던 줄(인쇄된 안내문)은 뺀다.
-        let rest = region.slice(idx + label.length, idx + label.length + 300);
-        let cut = rest.length;
-        for (const w of stopWords) {
-          const wi = rest.toLowerCase().indexOf(w.toLowerCase());
-          if (wi >= 0 && wi < cut) cut = wi;
-        }
-        const lines = rest.slice(0, cut).split('\n').slice(0, 3)
-          .filter((l, i) => i === 0 || !templateKeys || !templateKeys.has(lineKey(l)));
-        rest = lines.join(' ').replace(/[\t]+/g, ' ').trim();
-        return /[가-힣]{2,}|[A-Za-z]{3,}/.test(rest) ? rest : '';
-      };
-      // 라벨이 여러 번 나오면(안내문·표) 어느 한 곳이라도 채워졌는지 본다
-      const filledText = (label) => {
-        const l = label.toLowerCase();
-        let idx = rlow.indexOf(l), seen = false;
-        while (idx >= 0) {
-          seen = true;
-          const t = filledAt(label, idx);
-          if (t) return t;
-          idx = rlow.indexOf(l, idx + l.length);
-        }
-        return seen ? '' : null;
-      };
-      const found = [], empty = [];
-      for (const label of labels) {
-        const t = filledText(label);
-        if (t) found.push('"' + label + '": "' + t.slice(0, 40) + '"');
-        else empty.push('"' + label + '"' + (t === null ? '(항목 없음)' : ''));
-      }
-      if (!empty.length) return { met: true, evidence: '내용이 채워짐 — ' + found.join(', ') };
-      // 일부만 채움: 배점은 5점 단위라 쪼개지 않고 이 항목 점수는 준다.
-      if (found.length) return { met: true, partial: true, evidence: '일부 채워짐 — ' + found.join(', ') };
-      return { met: false, evidence: empty.join(', ') + ' 칸이 비어 있는 것으로 보임(표/칸에 내용이 채워지지 않음)' };
     }
     return { met: false, manual: true, evidence: '' };
   }
