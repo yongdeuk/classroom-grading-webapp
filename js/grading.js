@@ -12,11 +12,11 @@
 //  - group.requires: 이 조건(정규식)이 제출물에 없으면 그 영역 체크를 자동으로 전부 해제.
 // 과목에 상관없이 쓸 수 있도록 과목 전용 규칙은 모두 루브릭 데이터 안에 둔다.
 const Grading = (() => {
-  const AUTO_TYPES = { none: '직접 확인', keyword: '키워드(하나라도)', keywordAll: '키워드(모두)', regex: '정규식', filled: '표/항목 뒤 내용 채움', section: '활동(구역) 작성 여부' };
+  const AUTO_TYPES = { none: '직접 확인', keyword: '키워드(하나라도)', keywordAll: '키워드(모두)', regex: '정규식', filled: '표/항목 뒤 내용 채움', section: '활동(구역) 작성 여부', defFromTable: '설계표 함수명이 코드에 정의됨' };
 
   // 기본 제공 기준을 고치면 올리는 번호. 저장돼 있던 기준(과제별 복사본)은 불러올 때 이 번호를 보고
   // 기본 제공 항목의 자동 감지 규칙·근거 문장을 새 것으로 맞춘다(배점·이름은 선생님 것 유지).
-  const PRESET_VERSION = 4;
+  const PRESET_VERSION = 5;
 
   function hash(str) {
     let h = 5381;
@@ -28,29 +28,30 @@ const Grading = (() => {
   const INFO_SCIENCE_STACK_QUEUE = {
     name: '정보과학 — 함수를 활용한 스택·큐 프로그램 구현 (1차 수행평가)',
     step: 5, // 배점은 5점 단위(소수점 없음)
-    presetVersion: 4,
+    presetVersion: 5,
     baseScore: 0,
     groups: [
       {
         id: 'design', name: '자료구조 및 함수 설계의 적절성', base: 20,
         checks: [
-          // 설계는 각 회차 "활동1. 자료구조 및 함수 설계" 표에 쓴 내용으로만 판정(활동3 코드의 push·pop 등은 인정 안 함)
-          { id: 'design_s_io', label: '스택: 삽입(push)·삭제(pop) 연산 설계', points: 5, scope: 'stack', auto: { type: 'filled', pattern: '스택 삽입(등록), 스택 삭제(취소/복구)', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 스택 삽입(등록), 스택 삭제(취소/복구), (자유 추가)', within: '활동1' }, reason: '스택 활동1 설계표의 삽입·삭제 연산 칸(함수명 등)이 비어 있음' },
-          { id: 'design_s_peek', label: '스택: 조회(peek)·상태 확인(isEmpty) 설계', points: 5, scope: 'stack', auto: { type: 'regex', pattern: '(peek|top|조회)[\\s\\S]*(is_?empty|비어|비었)|(is_?empty|비어|비었)[\\s\\S]*(peek|top|조회)', within: '활동1' }, reason: '스택 활동1 설계표에 조회·상태 확인 연산 설계가 없음' },
-          { id: 'design_q_io', label: '큐: 삽입(enqueue)·삭제(dequeue) 연산 설계', points: 5, scope: 'queue', auto: { type: 'filled', pattern: '큐 삽입(접수), 큐 삭제(처리)', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 큐 삽입(접수), 큐 삭제(처리), (자유 추가)', within: '활동1' }, reason: '큐 활동1 설계표의 삽입·삭제 연산 칸(함수명 등)이 비어 있음' },
-          { id: 'design_q_peek', label: '큐: 조회(front/peek)·상태 확인 설계', points: 5, scope: 'queue', auto: { type: 'regex', pattern: '(front|peek|조회)[\\s\\S]*(is_?empty|비어|비었)|(is_?empty|비어|비었)[\\s\\S]*(front|peek|조회)', within: '활동1' }, reason: '큐 활동1 설계표에 조회·상태 확인 연산 설계가 없음' },
+          // 설계는 각 회차 "활동1. 자료구조 및 함수 설계" 표의 칸을 채웠으면 인정(함수명은 학생이 바꿔 쓰므로 키워드 불필요)
+          { id: 'design_s_io', label: '스택: 삽입·삭제 연산 설계', points: 5, scope: 'stack', auto: { type: 'filled', pattern: '스택 삽입(등록), 스택 삭제(취소/복구)', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 스택 삽입(등록), 스택 삭제(취소/복구), (자유 추가)', within: '활동1' }, reason: '스택 활동1 설계표의 삽입·삭제 연산 칸(함수명 등)이 비어 있음' },
+          { id: 'design_s_peek', label: '스택: 추가 연산(조회·상태 확인 등) 설계', points: 5, scope: 'stack', auto: { type: 'filled', pattern: '(자유 추가)', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 스택 삽입(등록), 스택 삭제(취소/복구), (자유 추가)', within: '활동1' }, reason: '스택 활동1 설계표의 추가 연산(자유 추가) 칸이 비어 있음' },
+          { id: 'design_q_io', label: '큐: 삽입·삭제 연산 설계', points: 5, scope: 'queue', auto: { type: 'filled', pattern: '큐 삽입(접수), 큐 삭제(처리)', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 큐 삽입(접수), 큐 삭제(처리), (자유 추가)', within: '활동1' }, reason: '큐 활동1 설계표의 삽입·삭제 연산 칸(함수명 등)이 비어 있음' },
+          { id: 'design_q_peek', label: '큐: 추가 연산(조회·상태 확인 등) 설계', points: 5, scope: 'queue', auto: { type: 'filled', pattern: '(자유 추가)', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 큐 삽입(접수), 큐 삭제(처리), (자유 추가)', within: '활동1' }, reason: '큐 활동1 설계표의 추가 연산(자유 추가) 칸이 비어 있음' },
         ],
       },
       {
         id: 'impl', name: '함수를 활용한 스택·큐 연산 구현', base: 10,
+        // 구현은 학생이 활동1 설계표에 적은 함수명이 활동3 코드에 def로 정의돼 있는지로 판정(유형 'defFromTable').
         // class 없이 구현하면(교과서의 class Stack/Queue를 변경하라는 요구사항 위반) AI 작성 의심 →
         // 이 영역은 기본 점수만. 교사가 의심을 해제하면 다시 자동 채점된다.
         aiBlock: true,
         checks: [
-          { id: 'impl_s_io', label: '스택 push·pop 함수 구현', points: 5, auto: { type: 'regex', pattern: '(?=[\\s\\S]*def\\s+push)(?=[\\s\\S]*def\\s+pop)' }, reason: 'push 또는 pop 함수 정의(def)가 없음' },
-          { id: 'impl_s_peek', label: '스택 peek·isEmpty 함수 구현', points: 5, auto: { type: 'regex', pattern: '(?=[\\s\\S]*def\\s+(peek|top))(?=[\\s\\S]*def\\s+is_?empty)' }, reason: 'peek 또는 isEmpty 함수 정의(def)가 없음' },
-          { id: 'impl_q_io', label: '큐 enqueue·dequeue 함수 구현', points: 5, auto: { type: 'regex', pattern: '(?=[\\s\\S]*def\\s+enqueue)(?=[\\s\\S]*def\\s+dequeue)' }, reason: 'enqueue 또는 dequeue 함수 정의(def)가 없음' },
-          { id: 'impl_q_peek', label: '큐 peek(front)·isEmpty 함수 구현', points: 5, auto: { type: 'regex', pattern: '(?=[\\s\\S]*def\\s+(peek|front))(?=[\\s\\S]*def\\s+is_?empty)' }, reason: '큐의 peek(front) 또는 isEmpty 함수 정의(def)가 없음' },
+          { id: 'impl_s_io', label: '스택: 설계한 삽입·삭제 함수를 코드로 구현(활동3)', points: 5, scope: 'stack', auto: { type: 'defFromTable', pattern: '스택 삽입(등록), 스택 삭제(취소/복구)', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 스택 삽입(등록), 스택 삭제(취소/복구), (자유 추가)', within: '활동1' }, reason: '스택 활동1 설계표에 적은 삽입·삭제 함수명이 활동3 코드에 def로 정의되어 있지 않음' },
+          { id: 'impl_s_peek', label: '스택: 설계한 추가 연산 함수를 코드로 구현(활동3)', points: 5, scope: 'stack', auto: { type: 'defFromTable', pattern: '(자유 추가)', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 스택 삽입(등록), 스택 삭제(취소/복구), (자유 추가)', within: '활동1' }, reason: '스택 활동1 설계표에 적은 추가 연산 함수명이 활동3 코드에 def로 정의되어 있지 않음' },
+          { id: 'impl_q_io', label: '큐: 설계한 삽입·삭제 함수를 코드로 구현(활동3)', points: 5, scope: 'queue', auto: { type: 'defFromTable', pattern: '큐 삽입(접수), 큐 삭제(처리)', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 큐 삽입(접수), 큐 삭제(처리), (자유 추가)', within: '활동1' }, reason: '큐 활동1 설계표에 적은 삽입·삭제 함수명이 활동3 코드에 def로 정의되어 있지 않음' },
+          { id: 'impl_q_peek', label: '큐: 설계한 추가 연산 함수를 코드로 구현(활동3)', points: 5, scope: 'queue', auto: { type: 'defFromTable', pattern: '(자유 추가)', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 큐 삽입(접수), 큐 삭제(처리), (자유 추가)', within: '활동1' }, reason: '큐 활동1 설계표에 적은 추가 연산 함수명이 활동3 코드에 def로 정의되어 있지 않음' },
         ],
       },
       {
@@ -78,6 +79,13 @@ const Grading = (() => {
       { type: 'missing', pattern: '\\bclass\\s+\\w+', requiresPresent: '\\bdef\\s+\\w+', message: 'class 없이 구현됨 — 과제 요구사항(교과서의 class Stack/Queue를 변경) 미준수' },
     ],
   };
+
+  // 예전 버전 기본 항목 이름(저장된 기준을 맞출 때 이 이름이면 새 이름으로 바꾼다)
+  const OLD_PRESET_LABELS = [
+    '스택: 삽입(push)·삭제(pop) 연산 설계', '스택: 조회(peek)·상태 확인(isEmpty) 설계',
+    '큐: 삽입(enqueue)·삭제(dequeue) 연산 설계', '큐: 조회(front/peek)·상태 확인 설계',
+    '스택 push·pop 함수 구현', '스택 peek·isEmpty 함수 구현', '큐 enqueue·dequeue 함수 구현', '큐 peek(front)·isEmpty 함수 구현',
+  ];
 
   const PRESETS = [{ key: 'info-stack-queue', rubric: INFO_SCIENCE_STACK_QUEUE }];
   // 예전 버전(배열 형식)의 기본 루브릭 체크 id — 그대로 남아 있으면 새 기본 기준으로 바꿔 준다.
@@ -177,7 +185,8 @@ const Grading = (() => {
           const same = (a, b) => !!a && (a.type || 'none') === (b.type || 'none') && (a.pattern || '') === (b.pattern || '') && (a.stopAt || '') === (b.stopAt || '') && (a.within || '') === (b.within || '');
           if (!pc || (same(c0.auto, pc.auto) && (c0.scope || '') === (pc.scope || ''))) return c0;
           synced.push(c0.id);
-          return Object.assign({}, c0, { auto: clone(pc.auto), scope: pc.scope || '', reason: pc.reason });
+          const label = OLD_PRESET_LABELS.includes(c0.label) ? pc.label : c0.label;
+          return Object.assign({}, c0, { label, auto: clone(pc.auto), scope: pc.scope || '', reason: pc.reason });
         }),
       }));
       r.presetVersion = PRESET_VERSION;
@@ -256,11 +265,11 @@ const Grading = (() => {
   }
 
   // { met, evidence } — evidence: 찾았으면 무엇을 찾았는지, 못 찾았으면 무엇을 못 찾았는지
-  function detect(auto, text) {
+  function detect(auto, text, fullText) {
     if (!auto || auto.type === 'none') return { met: false, manual: true, evidence: '' };
     if (!text) return { met: false, evidence: '' };
     // within(예: "활동1")이 있으면 키워드·정규식은 그 활동 구역(안내문 줄 제외) 안에서만 찾는다
-    if (auto.within && auto.type !== 'filled' && auto.type !== 'section') {
+    if (auto.within && auto.type !== 'filled' && auto.type !== 'section' && auto.type !== 'defFromTable') {
       const b = sectionBody(text, auto.within);
       if (b == null) return { met: false, evidence: '"' + auto.within + '" 구역을 문서에서 찾지 못함' };
       text = b.split('\n').filter((l) => !/하시오\.?\s*$/.test(l.trim())).join('\n');
@@ -290,6 +299,43 @@ const Grading = (() => {
       const m = re.exec(own);
       if (m) return { met: true, evidence: m[0] ? '일치: ' + snippet(own, m.index, m[0].length) : '조건 일치' };
       return { met: false, evidence: '제출물에서 패턴 /' + auto.pattern + '/ 과 일치하는 부분을 찾지 못함' };
+    }
+    if (auto.type === 'defFromTable') {
+      // 활동1 설계표의 행(pattern)에서 학생이 적은 함수명을 읽어, 그 이름이 코드에 "def 이름("으로
+      // 정의돼 있는지 본다. 코드는 활동3이나 별도 첨부(.py)에 있을 수 있어 제출물 전체에서 찾는다.
+      const rows = splitKw(auto.pattern);
+      if (!rows.length) return { met: false, manual: true, evidence: '' };
+      const region = auto.within ? sectionBody(text, auto.within) : text;
+      if (region == null) return { met: false, evidence: '"' + auto.within + '" 설계표를 문서에서 찾지 못함' };
+      const stops = splitKw(auto.stopAt).map((w) => w.toLowerCase());
+      const rlines = region.split('\n');
+      const names = [];
+      for (const row of rows) {
+        const ri = rlines.findIndex((l) => l.includes(row));
+        if (ri < 0) continue;
+        // 함수명 칸: 같은 줄에서 행 이름 뒤(표가 | 로 이어진 경우) 또는 다음 줄
+        let cell = rlines[ri].slice(rlines[ri].indexOf(row) + row.length).replace(/^[\s|:]+/, '').split('|')[0].trim();
+        if (!cell) {
+          for (let j = ri + 1; j < Math.min(rlines.length, ri + 3); j++) {
+            const t = rlines[j].trim();
+            if (!t) continue;
+            if (stops.some((w) => t.toLowerCase().startsWith(w)) || (templateKeys && templateKeys.has(lineKey(t)))) break;
+            cell = t.split('|')[0].trim();
+            break;
+          }
+        }
+        // 한 칸에 "peek / is_empty"처럼 여러 개를 적을 수 있음. 괄호 앞 이름만.
+        for (const part of cell.split(/[\/,·]|\s및\s/)) {
+          const m = /[A-Za-z_가-힣][A-Za-z0-9_가-힣]*/.exec(part.replace(/\(.*$/, '').trim());
+          if (m && m[0].length >= 2 && !names.includes(m[0])) names.push(m[0]);
+        }
+      }
+      if (!names.length) return { met: false, evidence: '설계표에 함수명이 없어 코드 구현을 확인할 수 없음' };
+      const code = fullText || text;
+      const esc = (n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const missing = names.filter((n) => !new RegExp('def\\s+' + esc(n) + '\\s*\\(').test(code));
+      if (!missing.length) return { met: true, evidence: '설계표 함수 ' + names.join(', ') + ' 모두 코드에 정의됨' };
+      return { met: false, evidence: '설계표 함수명 ' + missing.join(', ') + '이(가) 코드에 def로 정의되지 않음' + (missing.length < names.length ? ' (정의됨: ' + names.filter((n) => !missing.includes(n)).join(', ') + ')' : '') };
     }
     if (auto.type === 'section') {
       // pattern(예: "활동4") 제목 줄 다음부터 다음 "■" 제목 전까지를 그 활동 구역으로 보고,
@@ -404,7 +450,7 @@ const Grading = (() => {
     }
     const scoped = sectionText(c.scope, text);
     const prefix = c.scope ? SCOPE_LABEL[c.scope] : '';
-    const d = detect(c.auto, scoped);
+    const d = detect(c.auto, scoped, text);
     if (d.manual) return { met: false, reason: c.reason || '자동 감지 대상이 아닌 항목 — 파일을 확인하고 근거를 적어 주세요.' };
     if (d.met) return { met: true, reason: prefix + d.evidence, comment: d.comment ? prefix + d.comment : '' };
     // 정규식은 식 자체를 보여 줘도 알아보기 어려우니, 적어 둔 근거 문장이 있으면 그것만 쓴다.
