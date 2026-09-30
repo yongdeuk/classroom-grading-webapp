@@ -12,11 +12,11 @@
 //  - group.requires: 이 조건(정규식)이 제출물에 없으면 그 영역 체크를 자동으로 전부 해제.
 // 과목에 상관없이 쓸 수 있도록 과목 전용 규칙은 모두 루브릭 데이터 안에 둔다.
 const Grading = (() => {
-  const AUTO_TYPES = { none: '직접 확인', keyword: '키워드(하나라도)', keywordAll: '키워드(모두)', regex: '정규식', filled: '표/항목 뒤 내용 채움', section: '활동(구역) 작성 여부', defFromTable: '설계표 함수명이 코드에 정의됨' };
+  const AUTO_TYPES = { none: '직접 확인', keyword: '키워드(하나라도)', keywordAll: '키워드(모두)', regex: '정규식', filled: '표/항목 뒤 내용 채움', section: '활동(구역) 작성 여부', defFromTable: '설계표 함수명이 코드에 정의됨', rows: '표에 채운 행 개수', all: '여러 조건 모두 충족' };
 
   // 기본 제공 기준을 고치면 올리는 번호. 저장돼 있던 기준(과제별 복사본)은 불러올 때 이 번호를 보고
   // 기본 제공 항목의 자동 감지 규칙·근거 문장을 새 것으로 맞춘다(배점·이름은 선생님 것 유지).
-  const PRESET_VERSION = 9; // 9: 설계=활동1 표, 예외=활동2 표·활동4 표로 구역별 판정 (8: 빈 양식 대응 수정(7)을 취소하고 복귀) (6: 9/30 표 기준 판정을 되돌리고 9/29 방식으로 복귀)
+  const PRESET_VERSION = 10; // 10: 교육과정 문서의 점수 구간(12항목) 기준 추가, 항목 이름이 같으면 저장된 기준도 새 규칙으로 (9: 설계=활동1 표, 예외=활동2 표·활동4 표로 구역별 판정 (8: 빈 양식 대응 수정(7)을 취소하고 복귀)) (6: 9/30 표 기준 판정을 되돌리고 9/29 방식으로 복귀)
 
   function hash(str) {
     let h = 5381;
@@ -28,7 +28,7 @@ const Grading = (() => {
   const INFO_SCIENCE_STACK_QUEUE = {
     name: '정보과학 — 함수를 활용한 스택·큐 프로그램 구현 (1차 수행평가)',
     step: 5, // 배점은 5점 단위(소수점 없음)
-    presetVersion: 9,
+    presetVersion: 10,
     baseScore: 0,
     groups: [
       {
@@ -77,6 +77,58 @@ const Grading = (() => {
     ],
   };
 
+
+  // ---- 새 기본 기준: 교육과정 문서(1차 수행평가)의 점수 구간을 누적 체크로 옮긴 것 ----
+  // 영역마다 기본 점수(가장 낮은 구간) + 구간이 올라갈 때마다 +5. 규칙은 활동 구역별로 판정한다.
+  //  · 설계: 각 회차 활동1 표(상황 설명, 삽입·삭제·조회 행)에 채운 칸 수. 스택·큐 중 더 많이 채운 회차 기준(scope 'any').
+  //  · 구현: 활동3 코드의 함수 정의. 1~2회차 모두(scope 'both') 또는 한쪽(scope 'any')에 있는지, 설계표의 함수명이 정의됐는지.
+  //  · 예외/검증: 활동2 표(오버플로우·언더플로우 칸)와 활동4 표(입력값을 적은 행 수).
+  // "정확하게 동작", "오류를 스스로 수정"은 글자로 알 수 없으므로 자동 판정은 참고용 — 선생님이 확인한다.
+  const ROW_STOP = '연산 구분, 함수명, 매개변수, 반환값, 비어있는지 확인, 가득 찼는지 확인, 삽입, 삭제, 조회, 최대 저장 갯수, 최대 저장 개수';
+  const SIT = '(실생활에서의 스택사용)';
+  const FLOW = { type: 'filled', pattern: '오버플로우, 언더플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법', within: '활동2' };
+  const ROWS4 = (n) => ({ type: 'rows', pattern: '활동4', min: n });
+  const NEW_STACK_QUEUE = {
+    name: '정보과학 — 함수를 활용한 스택과 큐 프로그램 구현 (1차 수행평가)',
+    step: 5,
+    presetVersion: 10,
+    baseScore: 40,
+    groups: [
+      {
+        id: 'design', name: '자료구조 및 함수 설계의 적절성', base: 20,
+        checks: [
+          { id: 'd1', label: '교사의 안내를 받아 자료구조를 선정하고, 연산 중 1가지를 설계함', points: 5, scope: 'any', auto: { type: 'filled', pattern: '삽입, 삭제, 조회', stopAt: ROW_STOP, within: '활동1', min: 1 }, reason: '활동1 설계표에서 설계한 연산이 1가지도 확인되지 않음' },
+          { id: 'd2', label: '문제 상황에 맞는 자료구조를 스스로 선정하고, 삽입·삭제·조회 중 1가지 연산을 함수 단위로 설계함', points: 5, scope: 'any', auto: { type: 'filled', pattern: SIT + ', 삽입, 삭제, 조회', stopAt: ROW_STOP, within: '활동1', min: 2 }, reason: '활동1의 상황 설명과 1가지 이상의 연산 설계가 함께 확인되지 않음' },
+          { id: 'd3', label: '선정한 자료구조에서 삽입·삭제·조회 중 2가지 연산을 함수 단위로 설계함', points: 5, scope: 'any', auto: { type: 'filled', pattern: SIT + ', 삽입, 삭제, 조회', stopAt: ROW_STOP, within: '활동1', min: 3 }, reason: '활동1 설계표에서 함수 단위로 설계된 연산이 2가지 미만임' },
+          { id: 'd4', label: '스택과 큐 중 적합한 자료구조를 선정하고, 삽입·삭제·조회 3가지 연산을 모두 함수 단위로 설계함', points: 5, scope: 'any', auto: { type: 'filled', pattern: SIT + ', 삽입, 삭제, 조회', stopAt: ROW_STOP, within: '활동1', min: 4 }, reason: '활동1 설계표에서 삽입·삭제·조회 3가지 연산을 모두 설계하지 않음' },
+        ],
+      },
+      {
+        id: 'impl', name: '함수를 활용한 스택·큐 연산 구현', base: 10,
+        // class 없이 구현하면(교과서의 class Stack/Queue를 변경하라는 요구사항 위반) AI 작성 의심 → 이 영역은 기본 점수만.
+        aiBlock: true,
+        checks: [
+          { id: 'i1', label: '스택 또는 큐 중 한 자료구조에 대한 연산을 함수로 구현함', points: 5, scope: 'any', auto: { type: 'regex', pattern: 'def\\s+(?!__)\\w+\\s*\\(' }, reason: '활동3 코드에서 연산을 구현한 함수(def)가 확인되지 않음' },
+          { id: 'i2', label: '연산 중 1~2가지를 함수로 구현함 (오류 발생 포함)', points: 5, scope: 'both', auto: { type: 'regex', pattern: 'def\\s+(?!__)\\w+\\s*\\(' }, reason: '스택·큐 두 회차 모두에서 함수로 구현한 연산이 확인되지 않음' },
+          { id: 'i3', label: '설계한 연산 중 2가지 이상을 함수로 정확하게 구현하여 오류 없이 동작함', points: 5, scope: 'both', auto: { type: 'regex', pattern: '(def\\s+(?!__)\\w+\\s*\\([\\s\\S]*){2}' }, reason: '스택·큐 두 회차 모두에서 2가지 이상의 연산 함수가 확인되지 않음(동작 여부는 직접 확인)' },
+          { id: 'i4', label: '설계한 모든 연산(삽입, 삭제, 조회 등)을 함수로 정확하게 구현하여 오류 없이 동작함', points: 5, scope: 'both', auto: { type: 'defFromTable', pattern: '비어있는지 확인, 비어 있는지 확인, 가득 찼는지 확인, 삽입, 삭제, 조회', stopAt: ROW_STOP, within: '활동1' }, reason: '활동1 설계표에 적은 함수명이 활동3 코드에 모두 정의되지 않음(동작 여부는 직접 확인)' },
+        ],
+      },
+      {
+        id: 'exc', name: '예외 상황 처리 및 프로그램 검증', base: 10,
+        checks: [
+          { id: 'e1', label: '예외 상황을 처리하지 않더라도 프로그램의 정상 동작 여부를 확인함', points: 5, scope: 'any', auto: ROWS4(1), reason: '활동4 표에 프로그램 동작을 확인한 내용이 없음' },
+          { id: 'e2', label: '오버플로우 또는 언더플로우 중 1가지 예외 상황을 처리하고 1가지 입력값으로 검증함', points: 5, scope: 'any', auto: { type: 'all', parts: [Object.assign({}, FLOW, { min: 1 }), ROWS4(1)] }, reason: '활동2의 예외 처리 계획과 활동4의 검증 입력값이 함께 확인되지 않음' },
+          { id: 'e3', label: '오버플로우 또는 언더플로우 중 1가지 예외 상황을 처리하고 2가지 이상의 입력값으로 검증함', points: 5, scope: 'any', auto: { type: 'all', parts: [Object.assign({}, FLOW, { min: 1 }), ROWS4(2)] }, reason: '활동2의 예외 처리 계획과 활동4의 2가지 이상 검증 입력값이 함께 확인되지 않음' },
+          { id: 'e4', label: '오버플로우와 언더플로우 예외 상황을 모두 함수 내에서 처리하고 3가지 이상의 입력값으로 검증하여 오류를 스스로 수정함', points: 5, scope: 'any', auto: { type: 'all', parts: [Object.assign({}, FLOW, { min: 2 }), ROWS4(3)] }, reason: '오버플로우·언더플로우를 모두 처리하고 3가지 이상의 입력값으로 검증한 내용이 확인되지 않음(오류 수정은 직접 확인)' },
+        ],
+      },
+    ],
+    flags: [
+      { type: 'missing', pattern: '\\bclass\\s+\\w+', requiresPresent: '\\bdef\\s+\\w+', message: 'class 없이 구현됨 — 과제 요구사항(교과서의 class Stack/Queue를 변경) 미준수' },
+    ],
+  };
+
   // 예전 버전 기본 항목 이름(저장된 기준을 맞출 때 이 이름이면 새 이름으로 바꾼다)
   const OLD_PRESET_LABELS = [
     '스택: 삽입(push)·삭제(pop) 연산 설계', '스택: 조회(peek)·상태 확인(isEmpty) 설계',
@@ -87,7 +139,7 @@ const Grading = (() => {
     '큐: 설계한 삽입·삭제 함수를 코드로 구현(활동3)', '큐: 설계한 추가 연산 함수를 코드로 구현(활동3)',
   ];
 
-  const PRESETS = [{ key: 'info-stack-queue', rubric: INFO_SCIENCE_STACK_QUEUE }];
+  const PRESETS = [{ key: 'info-stack-queue-v2', rubric: NEW_STACK_QUEUE }, { key: 'info-stack-queue', rubric: INFO_SCIENCE_STACK_QUEUE }];
   // 예전 버전(배열 형식)의 기본 루브릭 체크 id — 그대로 남아 있으면 새 기본 기준으로 바꿔 준다.
   const LEGACY_DEFAULT_IDS = ['design_s_push', 'impl_s_push', 'exc_overflow'];
 
@@ -156,7 +208,7 @@ const Grading = (() => {
   }
   const CLASS_RE = '\\bclass\\s+\\w+';
 
-  function defaultRubric() { return normalize(clone(INFO_SCIENCE_STACK_QUEUE)); }
+  function defaultRubric() { return normalize(clone(NEW_STACK_QUEUE)); }
   function blankRubric() { return normalize({ name: '새 채점 기준', step: 5, baseScore: 0, groups: [], flags: [] }); }
 
   function isLegacyDefault(raw) {
@@ -177,12 +229,16 @@ const Grading = (() => {
     // 기본 제공 기준에서 온 항목은 자동 감지 규칙을 최신으로(바뀐 항목 id는 syncedIds로 알려 다시 채점)
     const synced = [];
     if ((Number(r.presetVersion) || 0) < PRESET_VERSION) {
-      const presetChecks = {};
-      for (const pg of INFO_SCIENCE_STACK_QUEUE.groups) for (const pc of pg.checks) presetChecks[pc.id] = pc;
+      const presetChecks = {}, presetByLabel = {};
+      const normLabel = (t) => String(t || '').replace(/[^0-9A-Za-z가-힣]/g, '');
+      for (const pr of PRESETS) for (const pg of pr.rubric.groups) for (const pc of pg.checks) {
+        presetChecks[pc.id] = pc;
+        if (pr.key === 'info-stack-queue-v2') presetByLabel[normLabel(pc.label)] = pc;
+      }
+      const same = (a, b) => !!a && JSON.stringify([a.type || 'none', a.pattern || '', a.stopAt || '', a.within || '', a.min || 0, a.parts || null]) === JSON.stringify([b.type || 'none', b.pattern || '', b.stopAt || '', b.within || '', b.min || 0, b.parts || null]);
       r.groups = (r.groups || []).map((g0) => Object.assign({}, g0, {
         checks: (g0.checks || []).map((c0) => {
-          const pc = presetChecks[c0.id];
-          const same = (a, b) => !!a && (a.type || 'none') === (b.type || 'none') && (a.pattern || '') === (b.pattern || '') && (a.stopAt || '') === (b.stopAt || '') && (a.within || '') === (b.within || '');
+          const pc = presetChecks[c0.id] || presetByLabel[normLabel(c0.label)];
           if (!pc || (same(c0.auto, pc.auto) && (c0.scope || '') === (pc.scope || '') && (c0.label === pc.label || !OLD_PRESET_LABELS.includes(c0.label)))) return c0;
           synced.push(c0.id);
           const label = OLD_PRESET_LABELS.includes(c0.label) ? pc.label : c0.label;
@@ -208,11 +264,18 @@ const Grading = (() => {
         while (checkIds.has(cid)) cid += '_';
         checkIds.add(cid);
         const type = c.auto && AUTO_TYPES[c.auto.type] ? c.auto.type : 'none';
-        const scope = c.scope === 'stack' || c.scope === 'queue' ? c.scope : '';
+        const scope = ['stack', 'queue', 'any', 'both'].includes(c.scope) ? c.scope : '';
         const stopAt = c.auto && c.auto.stopAt ? String(c.auto.stopAt) : '';
         const within = c.auto && c.auto.within ? String(c.auto.within) : '';
         const auto = { type, pattern: String((c.auto && c.auto.pattern) || ''), stopAt };
         if (within) auto.within = within;
+        if (c.auto && Number(c.auto.min) > 0) auto.min = Number(c.auto.min);
+        if (c.auto && Array.isArray(c.auto.parts)) auto.parts = c.auto.parts.map((pt) => {
+          const o = { type: AUTO_TYPES[pt.type] ? pt.type : 'none', pattern: String(pt.pattern || ''), stopAt: String(pt.stopAt || '') };
+          if (pt.within) o.within = String(pt.within);
+          if (Number(pt.min) > 0) o.min = Number(pt.min);
+          return o;
+        });
         return { id: cid, label, points: snap(c.points, r.step), auto, reason: String(c.reason || ''), scope };
       });
       return { id: gid, name, base: snap(g.base, r.step), requires, aiBlock, checks };
@@ -271,6 +334,10 @@ const Grading = (() => {
     return '"' + s + '"';
   }
 
+  const reEscG = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // 표 한 칸을 통째로 차지하는 낱말(앞뒤가 줄바꿈·탭·|). 띄어쓰기 차이는 무시.
+  const cellRegex = (w, flags) => new RegExp('(^|[\\r\\n\\t|])[ \\u00a0]*' + w.replace(/\s+/g, '').split('').map(reEscG).join('\\s*') + '[ \\u00a0]*[:：]?(?=[\\t\\r\\n|]|$)', flags || 'i');
+
   // { met, evidence } — evidence: 찾았으면 무엇을 찾았는지, 못 찾았으면 무엇을 못 찾았는지
   function detect(auto, text, fullText) {
     if (!auto || auto.type === 'none') return { met: false, manual: true, evidence: '' };
@@ -308,8 +375,7 @@ const Grading = (() => {
       // 문제 설명문·안내문 속의 같은 낱말(예: "(오버플로우 예외 처리 필요)")에는 걸리지 않는다.
       const region = auto.within ? sectionBody(text, auto.within) : text;
       const rlow = region == null ? '' : region.toLowerCase();
-      const reEsc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const cellRe = (w, flags) => new RegExp('(^|[\\r\\n\\t|])[ \\u00a0]*' + w.replace(/\s+/g, '').split('').map(reEsc).join('\\s*') + '[ \\u00a0]*[:：]?(?=[\\t\\r\\n|]|$)', flags || 'i');
+      const cellRe = cellRegex;
       const filledText = (label) => {
         if (region == null) return null;
         let idx, endLen = label.length;
@@ -339,6 +405,11 @@ const Grading = (() => {
         const t = filledText(label);
         if (t) found.push('"' + label + '": "' + t.slice(0, 40) + '"');
         else empty.push('"' + label + '"' + (t === null ? '(항목 없음)' : ''));
+      }
+      if (auto.min) {
+        // min: 이 칸들 중 min개 이상 채워져야 충족(부분 점수 없음)
+        if (found.length >= Number(auto.min)) return { met: true, evidence: '내용이 채워짐(' + found.length + '/' + labels.length + '칸) — ' + found.join(', ') };
+        return { met: false, evidence: '채워진 칸이 ' + found.length + '개뿐(필요 ' + auto.min + '개)' + (empty.length ? ' — 비어 있음: ' + empty.join(', ') : '') };
       }
       if (!empty.length) return { met: true, evidence: '내용이 채워짐 — ' + found.join(', ') };
       // 일부만 채움: 배점은 5점 단위라 쪼개지 않고 이 항목 점수는 준다.
@@ -382,6 +453,44 @@ const Grading = (() => {
       if (!missing.length) return { met: true, evidence: '설계표 함수 ' + names.join(', ') + ' 모두 코드에 정의됨' };
       return { met: false, evidence: '설계표 함수명 ' + missing.join(', ') + '이(가) 코드에 def로 정의되지 않음' + (missing.length < names.length ? ' (정의됨: ' + names.filter((n) => !missing.includes(n)).join(', ') + ')' : '') };
     }
+    if (auto.type === 'all') {
+      const parts = Array.isArray(auto.parts) ? auto.parts : [];
+      if (!parts.length) return { met: false, manual: true, evidence: '' };
+      const res = parts.map((pt) => detect(pt, text, fullText));
+      const bad = res.find((x) => !x.met);
+      if (!bad) return { met: true, evidence: res.map((x) => x.evidence).join(' / ') };
+      return { met: false, evidence: bad.evidence };
+    }
+    if (auto.type === 'rows') {
+      // pattern(예: "활동4") 구역의 표에서 번호 칸(1, 2, 3…) 뒤에 내용이 적힌 행이 min개 이상인지.
+      const head = (auto.pattern || '').trim();
+      const need = Number(auto.min) || 1;
+      if (!head) return { met: false, manual: true, evidence: '' };
+      const body = sectionBody(text, head);
+      if (body == null) return { met: false, evidence: '"' + head + '" 구역을 문서에서 찾지 못함' };
+      const has = (str) => {
+        const lines = str.split('\n').filter((l) => !templateKeys || !templateKeys.has(lineKey(l)));
+        return /[가-힣A-Za-z0-9]{2,}/.test(lines.join(' ').replace(/_+/g, ' '));
+      };
+      const starts = [];
+      let pos = 0;
+      for (let n = 1; n <= 12; n++) {
+        const m = cellRegex(String(n)).exec(body.slice(pos));
+        if (!m) break;
+        const st = pos + m.index + m[0].length;
+        starts.push({ n, st, mi: pos + m.index });
+        pos = st;
+      }
+      let count = 0;
+      starts.forEach((x, k) => { if (has(body.slice(x.st, k + 1 < starts.length ? starts[k + 1].mi : body.length))) count++; });
+      if (!starts.length) { // 번호 칸이 지워진 문서: 표 머리글·안내문을 뺀 나머지 글 칸 수로 어림
+        const ignore = new Set(splitKw(auto.stopAt || '번호, 수행 동작, 예상 결과, 실제 결과, 일치 여부').map(lineKey));
+        const cells = body.split(/[\n\t]/).filter((l) => { const k = lineKey(l); return k && !ignore.has(k) && !/하시오\.?$/.test(k) && !(templateKeys && templateKeys.has(k)) && /[가-힣A-Za-z0-9]{2,}/.test(k.replace(/_+/g, '')); });
+        count = Math.floor(cells.length / 3);
+      }
+      if (count >= need) return { met: true, evidence: '"' + head + '" 표에 ' + count + '개 행이 채워짐' };
+      return { met: false, evidence: '"' + head + '" 표에 채워진 행이 ' + count + '개뿐(필요 ' + need + '개)' };
+    }
     if (auto.type === 'section') {
       // pattern(예: "활동4") 제목 줄 다음부터 다음 "■" 제목 전까지를 그 활동 구역으로 보고,
       // 학습지에 원래 인쇄된 줄(원본과 같은 줄, 표 머리글 stopAt, 번호만 있는 줄, 안내문)을 뺀 뒤
@@ -419,7 +528,7 @@ const Grading = (() => {
     const { stack, queue } = splitRounds(text);
     return scope === 'stack' ? stack : scope === 'queue' ? queue : text;
   }
-  const SCOPE_LABEL = { stack: '스택(1회차) ', queue: '큐(2회차) ' };
+  const SCOPE_LABEL = { stack: '스택(1회차) ', queue: '큐(2회차) ', any: '', both: '' };
 
   function groupBlocked(g, text) {
     if (!g.requires || !g.requires.pattern || !text) return false;
@@ -440,9 +549,19 @@ const Grading = (() => {
     if (groupBlocked(g, text)) {
       return { met: false, reason: '필수 조건 미충족: ' + (g.requires.message || '/' + g.requires.pattern + '/ 없음') };
     }
-    const scoped = sectionText(c.scope, text);
     const prefix = c.scope ? SCOPE_LABEL[c.scope] : '';
-    const d = detect(c.auto, scoped, text);
+    let d;
+    if (c.scope === 'any' || c.scope === 'both') {
+      // any: 스택(1회차)·큐(2회차) 중 하나라도 충족하면 충족 / both: 두 회차 모두 충족해야 충족
+      const ds = detect(c.auto, sectionText('stack', text), text);
+      const dq = detect(c.auto, sectionText('queue', text), text);
+      if (ds.manual) d = ds;
+      else if (c.scope === 'any') d = ds.met ? Object.assign({}, ds, { evidence: '스택(1회차) ' + ds.evidence }) : dq.met ? Object.assign({}, dq, { evidence: '큐(2회차) ' + dq.evidence }) : { met: false, evidence: '스택: ' + ds.evidence + ' / 큐: ' + dq.evidence };
+      else d = ds.met && dq.met ? { met: true, evidence: '스택 ' + ds.evidence + ' / 큐 ' + dq.evidence } : { met: false, evidence: (ds.met ? '' : '스택: ' + ds.evidence) + (!ds.met && !dq.met ? ' / ' : '') + (dq.met ? '' : '큐: ' + dq.evidence) };
+      return d.met ? { met: true, reason: d.evidence, comment: '' } : { met: false, reason: (c.reason ? c.reason + ' — ' : '') + d.evidence };
+    }
+    const scoped = sectionText(c.scope, text);
+    d = detect(c.auto, scoped, text);
     if (d.manual) return { met: false, reason: c.reason || '자동 감지 대상이 아닌 항목 — 파일을 확인하고 근거를 적어 주세요.' };
     if (d.met) return { met: true, reason: prefix + d.evidence, comment: d.comment ? prefix + d.comment : '' };
     // 정규식은 식 자체를 보여 줘도 알아보기 어려우니, 적어 둔 근거 문장이 있으면 그것만 쓴다.
