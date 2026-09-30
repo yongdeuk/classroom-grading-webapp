@@ -16,7 +16,7 @@ const Grading = (() => {
 
   // 기본 제공 기준을 고치면 올리는 번호. 저장돼 있던 기준(과제별 복사본)은 불러올 때 이 번호를 보고
   // 기본 제공 항목의 자동 감지 규칙·근거 문장을 새 것으로 맞춘다(배점·이름은 선생님 것 유지).
-  const PRESET_VERSION = 8; // 8: 빈 양식 대응 수정(7)을 취소하고 이전 채점 방식으로 복귀 (6: 9/30 표 기준 판정을 되돌리고 9/29 방식으로 복귀)
+  const PRESET_VERSION = 9; // 9: 설계=활동1 표, 예외=활동2 표·활동4 표로 구역별 판정 (8: 빈 양식 대응 수정(7)을 취소하고 복귀) (6: 9/30 표 기준 판정을 되돌리고 9/29 방식으로 복귀)
 
   function hash(str) {
     let h = 5381;
@@ -28,16 +28,16 @@ const Grading = (() => {
   const INFO_SCIENCE_STACK_QUEUE = {
     name: '정보과학 — 함수를 활용한 스택·큐 프로그램 구현 (1차 수행평가)',
     step: 5, // 배점은 5점 단위(소수점 없음)
-    presetVersion: 8,
+    presetVersion: 9,
     baseScore: 0,
     groups: [
       {
         id: 'design', name: '자료구조 및 함수 설계의 적절성', base: 20,
         checks: [
-          { id: 'design_s_io', label: '스택: 삽입(push)·삭제(pop) 연산 설계', points: 5, auto: { type: 'keywordAll', pattern: 'push, pop' }, reason: '스택의 삽입·삭제 연산 설계가 확인되지 않음' },
-          { id: 'design_s_peek', label: '스택: 조회(peek)·상태 확인(isEmpty) 설계', points: 5, auto: { type: 'regex', pattern: '(peek|top|조회)[\\s\\S]*(is_?empty|비어)|(is_?empty|비어)[\\s\\S]*(peek|top|조회)' }, reason: '스택의 조회·상태 확인 연산 설계가 확인되지 않음' },
-          { id: 'design_q_io', label: '큐: 삽입(enqueue)·삭제(dequeue) 연산 설계', points: 5, auto: { type: 'keywordAll', pattern: 'enqueue, dequeue' }, reason: '큐의 삽입·삭제 연산 설계가 확인되지 않음' },
-          { id: 'design_q_peek', label: '큐: 조회(front/peek)·상태 확인 설계', points: 5, auto: { type: 'regex', pattern: '(front|peek|조회)[\\s\\S]*(is_?empty|비어)|(is_?empty|비어)[\\s\\S]*(front|peek|조회)' }, reason: '큐의 조회·상태 확인 연산 설계가 확인되지 않음' },
+          { id: 'design_s_io', label: '스택: 삽입(push)·삭제(pop) 연산 설계', points: 5, scope: 'stack', auto: { type: 'filled', pattern: '삽입, 삭제', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 비어있는지 확인, 가득 찼는지 확인, 삽입, 삭제, 조회', within: '활동1' }, reason: '스택 활동1 설계표의 삽입·삭제 연산 칸(함수명 등)이 비어 있음' },
+          { id: 'design_s_peek', label: '스택: 조회(peek)·상태 확인(isEmpty) 설계', points: 5, scope: 'stack', auto: { type: 'filled', pattern: '비어있는지 확인, 조회', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 비어있는지 확인, 가득 찼는지 확인, 삽입, 삭제, 조회', within: '활동1' }, reason: '스택 활동1 설계표의 조회·상태 확인 연산 칸이 비어 있음' },
+          { id: 'design_q_io', label: '큐: 삽입(enqueue)·삭제(dequeue) 연산 설계', points: 5, scope: 'queue', auto: { type: 'filled', pattern: '삽입, 삭제', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 비어있는지 확인, 가득 찼는지 확인, 삽입, 삭제, 조회', within: '활동1' }, reason: '큐 활동1 설계표의 삽입·삭제 연산 칸(함수명 등)이 비어 있음' },
+          { id: 'design_q_peek', label: '큐: 조회(front/peek)·상태 확인 설계', points: 5, scope: 'queue', auto: { type: 'filled', pattern: '비어있는지 확인, 조회', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 비어있는지 확인, 가득 찼는지 확인, 삽입, 삭제, 조회', within: '활동1' }, reason: '큐 활동1 설계표의 조회·상태 확인 연산 칸이 비어 있음' },
         ],
       },
       {
@@ -61,11 +61,11 @@ const Grading = (() => {
           // 그 항목 뒤에 실제 내용이 채워졌는지(다음 표 항목이 나오기 전까지)를 본다.
           // 스택 회차·큐 회차 각각 5점. 오버플로우·언더플로우 중 한 칸만 채웠으면 5점은 주고,
           // 빈 칸은 "예전 기준 -2.5점 사항"으로 코멘트에 남긴다(배점은 5점 단위로만).
-          { id: 'exc_s_flow', label: '스택: 오버플로우·언더플로우 예외 처리', points: 5, scope: 'stack', auto: { type: 'filled', pattern: '오버플로우, 언더플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법' }, reason: '스택의 오버플로우·언더플로우 처리 계획 칸이 비어 있는 것으로 보임' },
-          { id: 'exc_q_flow', label: '큐: 오버플로우·언더플로우 예외 처리', points: 5, scope: 'queue', auto: { type: 'filled', pattern: '오버플로우, 언더플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법' }, reason: '큐의 오버플로우·언더플로우 처리 계획 칸이 비어 있는 것으로 보임' },
+          { id: 'exc_s_flow', label: '스택: 오버플로우·언더플로우 예외 처리', points: 5, scope: 'stack', auto: { type: 'filled', pattern: '오버플로우, 언더플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법', within: '활동2' }, reason: '스택의 오버플로우·언더플로우 처리 계획 칸이 비어 있는 것으로 보임' },
+          { id: 'exc_q_flow', label: '큐: 오버플로우·언더플로우 예외 처리', points: 5, scope: 'queue', auto: { type: 'filled', pattern: '오버플로우, 언더플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법', within: '활동2' }, reason: '큐의 오버플로우·언더플로우 처리 계획 칸이 비어 있는 것으로 보임' },
           // 테스트 코드도 스택 회차·큐 회차를 나눠 각각 확인("2회차" 표시 기준)
-          { id: 'exc_s_test', label: '스택: 테스트 코드로 연산 실행 결과 검증', points: 5, scope: 'stack', auto: { type: 'regex', pattern: 'print\\s*\\(' }, reason: '스택 연산의 실행 결과를 확인하는 테스트 코드(print)가 없음' },
-          { id: 'exc_q_test', label: '큐: 테스트 코드로 연산 실행 결과 검증', points: 5, scope: 'queue', auto: { type: 'regex', pattern: 'print\\s*\\(' }, reason: '큐 연산의 실행 결과를 확인하는 테스트 코드(print)가 없음' },
+          { id: 'exc_s_test', label: '스택: 테스트 코드로 연산 실행 결과 검증', points: 5, scope: 'stack', auto: { type: 'section', pattern: '활동4', stopAt: '번호, 수행 동작, 예상 결과, 실제 결과, 일치 여부' }, reason: '스택 활동4(테스트 케이스 및 실행 결과 검증) 표가 비어 있음' },
+          { id: 'exc_q_test', label: '큐: 테스트 코드로 연산 실행 결과 검증', points: 5, scope: 'queue', auto: { type: 'section', pattern: '활동4', stopAt: '번호, 수행 동작, 예상 결과, 실제 결과, 일치 여부' }, reason: '큐 활동4(테스트 케이스 및 실행 결과 검증) 표가 비어 있음' },
         ],
       },
     ],
@@ -304,20 +304,34 @@ const Grading = (() => {
       const labels = splitKw(auto.pattern);
       if (!labels.length) return { met: false, manual: true, evidence: '' };
       const stopWords = splitKw(auto.stopAt || auto.pattern);
+      // within(예: "활동2")이 있으면 그 활동 구역 안에서만, 표의 "칸 이름"(칸 전체가 그 낱말인 곳)을 찾는다.
+      // 문제 설명문·안내문 속의 같은 낱말(예: "(오버플로우 예외 처리 필요)")에는 걸리지 않는다.
+      const region = auto.within ? sectionBody(text, auto.within) : text;
+      const rlow = region == null ? '' : region.toLowerCase();
+      const reEsc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const cellRe = (w, flags) => new RegExp('(^|[\\r\\n\\t|])[ \\u00a0]*' + w.replace(/\s+/g, '').split('').map(reEsc).join('\\s*') + '[ \\u00a0]*[:：]?(?=[\\t\\r\\n|]|$)', flags || 'i');
       const filledText = (label) => {
-        const idx = low.indexOf(label.toLowerCase());
-        if (idx < 0) return null;
+        if (region == null) return null;
+        let idx, endLen = label.length;
+        if (auto.within) {
+          const m = cellRe(label).exec(region);
+          if (!m) return null;
+          idx = m.index + m[0].length - label.length;
+        } else {
+          idx = rlow.indexOf(label.toLowerCase());
+          if (idx < 0) return null;
+        }
         // 칸 내용은 같은 줄(표 오른쪽 칸)이나 다음 줄(칸 안 문단)에 올 수 있어, 다음 표 항목이
         // 나오기 전까지 최대 3줄을 본다. 원본 학습지를 알면 원본에 원래 있던 줄(인쇄된 안내문)은 뺀다.
-        let rest = text.slice(idx + label.length, idx + label.length + 300);
+        let rest = region.slice(idx + endLen, idx + endLen + 400);
         let cut = rest.length;
         for (const w of stopWords) {
-          const wi = rest.toLowerCase().indexOf(w.toLowerCase());
+          const wi = auto.within ? (() => { const sm = cellRe(w).exec(rest); return sm ? sm.index : -1; })() : rest.toLowerCase().indexOf(w.toLowerCase());
           if (wi >= 0 && wi < cut) cut = wi;
         }
-        const lines = rest.slice(0, cut).split('\n').slice(0, 3)
+        const lines = rest.slice(0, cut).split('\n').slice(0, auto.within ? 12 : 3)
           .filter((l, i) => i === 0 || !templateKeys || !templateKeys.has(lineKey(l)));
-        rest = lines.join(' ').replace(/[\t]+/g, ' ').trim();
+        rest = lines.join(' ').replace(/[\t\r]+/g, ' ').trim();
         return /[가-힣]{2,}|[A-Za-z]{3,}/.test(rest) ? rest : '';
       };
       const found = [], empty = [];
@@ -396,7 +410,7 @@ const Grading = (() => {
   // 회차 표시를 찾지 못하면 전체 텍스트를 그대로 두 구간 모두에 쓴다(예전 형식 등 호환).
   function splitRounds(text) {
     if (!text) return { stack: '', queue: '' };
-    const m = /2\s*회차/.exec(text);
+    const m = /\[\s*2\s*회차/.exec(text) || /2\s*회차/.exec(text);
     if (!m) return { stack: text, queue: text };
     return { stack: text.slice(0, m.index), queue: text.slice(m.index) };
   }
@@ -482,7 +496,9 @@ const Grading = (() => {
   }
   // head(예: "활동4")가 들어간 제목 줄 다음부터 다음 "■" 제목 전까지. 못 찾으면 null.
   function sectionBody(text, head) {
-    const hi = text.toLowerCase().indexOf(String(head).toLowerCase());
+    // 안내문 첫머리에 "활동1, 활동2, …"가 나오므로, "■"로 시작하는 제목 줄을 먼저 찾는다.
+    const hm = new RegExp('■[^\\n]*' + String(head).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').exec(text);
+    const hi = hm ? hm.index : text.toLowerCase().indexOf(String(head).toLowerCase());
     if (hi < 0) return null;
     const nl = text.indexOf('\n', hi);
     const start = nl < 0 ? text.length : nl + 1;
