@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>클래스룸 수행평가 채점 도우미</title>
-<link rel="stylesheet" href="style.css?v=202609301027">
+<link rel="stylesheet" href="style.css?v=202609301030">
 </head>
 <body>
   <header class="topbar">
@@ -36,23 +36,20 @@
       </div>
     </section>
 
-    <nav class="tabs">
-      <button class="tab-btn active" data-tab="grade">채점</button>
-      <button class="tab-btn" data-tab="rubric">채점 기준</button>
-      <span id="rubricBadge" class="rubric-badge"></span>
-    </nav>
+    <span id="rubricBadge" class="hidden"></span>
 
     <!-- ============ 채점 탭 ============ -->
     <div id="tabGrade">
       <section class="panel" id="gradeEmpty">
         <p class="muted" style="margin:0">위에서 수업·과제를 고르고 <b>제출물 불러오기</b>를 누르세요.
-          채점 기준은 <b>채점 기준</b> 탭에서 파일을 올리거나 고칠 수 있습니다.</p>
+          채점 기준은 오른쪽 위 <b>⚙ 설정</b>에서 파일을 올리거나 고칠 수 있습니다.</p>
       </section>
       <section class="panel hidden" id="workArea">
         <div class="panel-head">
           <h2 id="workTitle">제출 현황</h2>
           <div>
             <button id="regradeBtn2" class="btn ghost small">전체 자동 재채점</button>
+            <button id="scoreToggleBtn" class="btn ghost small" title="왼쪽 학생 목록의 점수를 보이거나 숨깁니다">점수 숨기기</button>
             <button id="claudeGradeAllBtn" class="btn ghost small" title="확인 완료되지 않은 학생 전원을 Claude로 채점(API 요금 발생)">🤖 전체 Claude 채점</button>
             <button id="claudeGradeSelectedBtn" class="btn ghost small hidden" title="왼쪽 목록에서 체크한 학생만 Claude로 채점(API 요금 발생)">🤖 선택 학생 채점</button>
             <button id="commentSelectedBtn" class="btn ghost small hidden" title="왼쪽 목록에서 체크한 학생의 제출 파일에 감점 근거를 댓글로 남깁니다(보내기 전에 미리보기)">💬 선택 학생 근거 댓글</button>
@@ -79,8 +76,12 @@
       </section>
     </div>
 
-    <!-- ============ 채점 기준 탭 ============ -->
+    <!-- ============ 설정(채점 기준) ============ -->
     <div id="tabRubric" class="hidden">
+      <div class="settings-head">
+        <h2>⚙ 설정 — 채점 기준</h2>
+        <button class="btn primary small" id="settingsBackBtn">← 채점 화면으로</button>
+      </div>
       <section class="panel">
         <div class="panel-head"><h2>채점 기준 파일 올리기</h2></div>
         <div id="rubricDrop" class="dropzone">
@@ -227,16 +228,16 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
   </script>
 
-  <script src="js/config.js?v=202609301027"></script>
-  <script src="js/auth.js?v=202609301027"></script>
-  <script src="js/api.js?v=202609301027"></script>
-  <script src="js/extract.js?v=202609301027"></script>
-  <script src="js/grading.js?v=202609301027"></script>
-  <script src="js/similarity.js?v=202609301027"></script>
-  <script src="js/gemini.js?v=202609301027"></script>
-  <script src="js/claude.js?v=202609301027"></script>
-  <script src="js/rubric-import.js?v=202609301027"></script>
-  <script src="js/store.js?v=202609301027"></script>
-  <script src="js/app.js?v=202609301027"></script>
+  <script src="js/config.js?v=202609301030"></script>
+  <script src="js/auth.js?v=202609301030"></script>
+  <script src="js/api.js?v=202609301030"></script>
+  <script src="js/extract.js?v=202609301030"></script>
+  <script src="js/grading.js?v=202609301030"></script>
+  <script src="js/similarity.js?v=202609301030"></script>
+  <script src="js/gemini.js?v=202609301030"></script>
+  <script src="js/claude.js?v=202609301030"></script>
+  <script src="js/rubric-import.js?v=202609301030"></script>
+  <script src="js/store.js?v=202609301030"></script>
+  <script src="js/app.js?v=202609301030"></script>
 </body>
 </html>

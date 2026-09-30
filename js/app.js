@@ -78,14 +78,24 @@
   }
 
   // ---------------- 탭 ----------------
+  // 탭 대신: 평소엔 채점 화면, 오른쪽 위 "⚙ 설정"을 누르면 채점 기준 설정 화면(다시 누르면 채점 화면)
   function showTab(tab) {
-    document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+    state.tab = tab;
     $('#tabGrade').classList.toggle('hidden', tab !== 'grade');
     $('#tabRubric').classList.toggle('hidden', tab !== 'rubric');
-    try { localStorage.setItem('grader:tab', tab); } catch (e) {}
+    $('#pickerPanel').classList.toggle('hidden', tab === 'rubric');
+    $('#settingsTabBtn').textContent = tab === 'rubric' ? '← 채점 화면' : '⚙ 설정';
+    window.scrollTo(0, 0);
   }
-  document.querySelectorAll('.tab-btn').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
-  $('#settingsTabBtn').addEventListener('click', () => showTab('rubric'));
+  $('#settingsTabBtn').addEventListener('click', () => showTab(state.tab === 'rubric' ? 'grade' : 'rubric'));
+  $('#settingsBackBtn').addEventListener('click', () => showTab('grade'));
+  // 점수 보이기/숨기기(버튼, 브라우저에 기억)
+  function updateScoreToggle() { $('#scoreToggleBtn').textContent = state.showScores ? '점수 숨기기' : '점수 보기'; }
+  $('#scoreToggleBtn').addEventListener('click', () => {
+    state.showScores = !state.showScores;
+    try { localStorage.setItem('grader:showScores', state.showScores ? '1' : '0'); } catch (err) {}
+    renderStudentList();
+  });
   // 제목 클릭 → 처음 화면(수업·과제 선택). 새로고침하면 로그인이 풀리므로 화면만 초기 상태로 돌린다.
   // 채점한 내용은 이미 저장돼 있어 같은 과제를 다시 불러오면 그대로 이어진다.
   $('#homeLink').addEventListener('click', (e) => {
@@ -470,7 +480,7 @@
     renderAllGrading();
   }
 
-  // ---------------- 채점 기준 탭 ----------------
+  // ---------------- 설정(채점 기준) 화면 ----------------
   function renderRubricTab() {
     renderRefDocs();
     renderLibrary();
@@ -667,7 +677,7 @@
   // targets 학생들을 Claude로 일괄 채점한다. btn이 있으면 진행 상황을 그 버튼 글자에 표시하고,
   // 끝나면 idleLabel로 되돌린다(선택 학생용 버튼은 매번 개수가 바뀌므로 호출부에서 직접 넘겨줌).
   async function runClaudeGradeBulk(targets, btn, idleLabel) {
-    if (!Claude.getKey()) { toast('먼저 "채점 기준" 탭에서 Claude API 키를 입력해 주세요.', 5000); return; }
+    if (!Claude.getKey()) { toast('먼저 ⚙ 설정에서 Claude API 키를 입력해 주세요.', 5000); return; }
     const list = targets.filter((s) => s.status !== '미제출' && s.text);
     if (!list.length) { toast('Claude로 채점할 학생이 없습니다(제출물이 없거나 비어 있음).'); return; }
     if (!confirm(list.length + '명을 Claude(' + Claude.getModel() + ')로 채점합니다. 실제 API 요금이 청구됩니다. 계속할까요?')) return;
@@ -884,7 +894,8 @@
     const nSub = visible.filter((s) => s.status !== '미제출').length;
     const nLate = visible.filter((s) => s.status === '제출(지각)').length;
     const nBlank = visible.filter((s) => s.status !== '미제출' && s.blank).length;
-    const scoreBar = `<div class="list-tools"><span class="list-count">총 <b>${visible.length}</b>명 · 제출 ${nSub}${nLate ? ' (지각 ' + nLate + ')' : ''} · 미제출 ${visible.length - nSub}${nBlank ? ' · 미기입 ' + nBlank : ''}</span><label class="score-toggle"><input type="checkbox" id="showScoresChk" ${state.showScores ? 'checked' : ''}> 점수 보기</label></div>`;
+    const scoreBar = `<div class="list-tools"><span class="list-count">총 <b>${visible.length}</b>명 · 제출 ${nSub}${nLate ? ' (지각 ' + nLate + ')' : ''} · 미제출 ${visible.length - nSub}${nBlank ? ' · 미기입 ' + nBlank : ''}</span></div>`;
+    updateScoreToggle();
     wrap.classList.toggle('hide-scores', !state.showScores);
     wrap.innerHTML = scoreBar + restoreBar + visible
       .map(
@@ -936,11 +947,6 @@
         persist();
         renderStudentList();
       });
-    });
-    wrap.querySelector('#showScoresChk').addEventListener('change', (e) => {
-      state.showScores = e.target.checked;
-      try { localStorage.setItem('grader:showScores', state.showScores ? '1' : '0'); } catch (err) {}
-      renderStudentList();
     });
     const restoreBtn = wrap.querySelector('#restoreHiddenBtn');
     if (restoreBtn) restoreBtn.addEventListener('click', () => {
@@ -1106,7 +1112,7 @@
           ${g.base ? `<div class="base-note">기본 ${g.base}점 포함</div>` : ''}
           ${aiBlocked ? '<p class="flag-note">🤖 AI 작성 의심 — 자동 채점에서 이 영역은 모두 미체크(기본 점수만). 의심을 해제하면 다시 채점됩니다.</p>' : ''}
           ${!aiBlocked && blocked ? `<p class="flag-note">⚠ 필수 조건 미충족으로 자동 채점에서 모두 미체크 — ${esc(g.requires.message || '')}. 필요하면 직접 체크하세요.</p>` : ''}
-          ${checksHtml || '<p class="muted" style="font-size:12px">체크 항목이 없습니다. "채점 기준" 탭에서 추가하세요.</p>'}
+          ${checksHtml || '<p class="muted" style="font-size:12px">체크 항목이 없습니다. ⚙ 설정에서 추가하세요.</p>'}
         </div>`;
       })
       .join('');
@@ -1118,7 +1124,7 @@
       </div>
       ${!absent ? `<div class="teacher-bar">
         <button class="btn primary small" id="teacherSaveBtn">💾 교사 수정 저장</button>
-        <button class="btn ghost small" id="sampleBtn" title="이 학생 제출물을 100점 샘플로 지정해, 채점 기준 탭에서 규칙이 맞는지 확인합니다">⭐ 100점 샘플로 지정</button>
+        <button class="btn ghost small" id="sampleBtn" title="이 학생 제출물을 100점 샘플로 지정해, ⚙ 설정에서 규칙이 맞는지 확인합니다">⭐ 100점 샘플로 지정</button>
         <button class="btn ghost small" id="commentOneBtn" title="이 학생 제출 파일에 감점 근거를 댓글로 남깁니다(보내기 전에 미리보기)">💬 근거 댓글${s.feedbackPosted ? ' ✓' : ''}</button>
         <span class="muted">${s.teacherSavedAt ? '저장 ' + esc(new Date(s.teacherSavedAt).toLocaleString('ko-KR')) + ' · ' : ''}선생님이 바꾼 체크는 자동 재채점·Claude 채점을 해도 유지됩니다</span>
       </div>` : ''}
@@ -1172,7 +1178,7 @@
     if (sBtn) sBtn.addEventListener('click', () => {
       if (!s.text) { toast('추출된 텍스트가 없습니다'); return; }
       setRefDoc('full', { name: s.name + ' 제출물', text: s.text, at: Date.now(), from: 'student' });
-      toast(s.name + ' 제출물을 100점 샘플로 지정했습니다 — 채점 기준 탭에서 항목별 확인 결과를 보세요', 5000);
+      toast(s.name + ' 제출물을 100점 샘플로 지정했습니다 — ⚙ 설정에서 항목별 확인 결과를 보세요', 5000);
     });
     const cOne = el.querySelector('#commentOneBtn');
     if (cOne) cOne.addEventListener('click', () => openCommentModal([s]));
@@ -1475,9 +1481,8 @@
     }
   });
 
-  let initialTab = 'grade';
-  try { initialTab = localStorage.getItem('grader:tab') || 'grade'; } catch (e) {}
-  showTab(initialTab);
+  showTab('grade');
+  updateScoreToggle();
   renderRubricTab();
 
   window.addEventListener('load', () => {

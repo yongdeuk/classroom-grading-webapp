@@ -82,7 +82,7 @@ const Claude = (() => {
   // 반환: { checks: { [checkId]: { met, reason } }, aiSuspect, aiSuspectReason }
   async function gradeSubmission(rubric, text) {
     const key = getKey();
-    if (!key) throw new Error('Claude API 키가 없습니다. "채점 기준" 탭 아래쪽 AI 설정에서 입력해 주세요.');
+    if (!key) throw new Error('Claude API 키가 없습니다. ⚙ 설정 아래쪽 AI 설정에서 입력해 주세요.');
     const body = {
       model: getModel(),
       max_tokens: 4096,

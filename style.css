@@ -29,7 +29,7 @@ body {
 .topbar h1 { font-size: 18px; margin: 0; }
 #userInfo { margin-right: 10px; font-size: 13px; color: var(--muted); }
 
-main#app { max-width: 1680px; margin: 20px auto; padding: 0 16px 60px; display: flex; flex-direction: column; gap: 16px; }
+main#app { max-width: none; margin: 10px auto; padding: 0 12px 16px; display: flex; flex-direction: column; gap: 16px; }
 
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
 .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
@@ -63,8 +63,8 @@ select { min-width: 220px; }
 .check-row .del { border: none; background: none; color: var(--muted); cursor: pointer; }
 .rubric-group-foot { margin-top: 6px; }
 
-.split3 { display: grid; grid-template-columns: 230px minmax(0, 1fr) 400px; gap: 16px; align-items: start; }
-.student-list { display: flex; flex-direction: column; gap: 6px; max-height: 80vh; overflow: auto; }
+.split3 { display: grid; grid-template-columns: 230px minmax(0, 1fr) 430px; gap: 12px; align-items: start; }
+.student-list { display: flex; flex-direction: column; gap: 6px; max-height: calc(100vh - 150px); overflow: auto; }
 .student-row {
   display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border);
   border-radius: 8px; cursor: pointer; background: #fff;
@@ -92,7 +92,7 @@ select { min-width: 220px; }
 .sim-score { font-weight: 700; color: #b45309; font-size: 12px; background: #fef3c7; border-radius: 999px; padding: 2px 8px; }
 .sim-name.link-btn { margin-left: 0; color: var(--primary); text-decoration: underline; font-size: 13px; }
 
-.doc-viewer, .grading-panel { background: #fff; border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; min-height: 400px; max-height: 82vh; overflow: auto; }
+.doc-viewer, .grading-panel { background: #fff; border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; min-height: 400px; max-height: calc(100vh - 150px); overflow: auto; }
 .detail-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
 .detail-head h3 { margin: 0; font-size: 16px; }
 .file-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; font-size: 12px; margin: 4px 6px 4px 0; background: #f9fafb; }
@@ -169,7 +169,7 @@ label.inline input { width: 70px; font-size: 12.5px; padding: 5px 8px; }
 .file-tabs { margin-bottom: 8px; }
 .file-chip.active { border-color: var(--primary); background: #eef2ff; }
 .file-chip .file-name { color: var(--text); font-weight: 600; padding: 0; }
-.doc-frame { width: 100%; height: 72vh; border: 1px solid var(--border); border-radius: 8px; background: #f3f4f6; }
+.doc-frame { width: 100%; height: calc(100vh - 260px); min-height: 480px; border: 1px solid var(--border); border-radius: 8px; background: #f3f4f6; }
 .frame-hint { font-size: 11.5px; margin: 4px 0 0; }
 .answer-box { background: #f9fafb; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 8px; white-space: pre-wrap; }
 .extract-details { margin-top: 12px; font-size: 12.5px; }
@@ -264,3 +264,8 @@ label.inline input { width: 70px; font-size: 12.5px; padding: 5px 8px; }
 .ref-table th { font-size: 12px; color: var(--muted); font-weight: 600; }
 .ref-table td.bad { background: #fee2e2; color: #991b1b; font-weight: 600; }
 @media (max-width: 860px) { .ref-grid { grid-template-columns: 1fr; } }
+/* 설정 화면 머리 */
+.settings-head { display: flex; align-items: center; justify-content: space-between; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 18px; }
+.settings-head h2 { margin: 0; font-size: 17px; }
+#workArea { padding: 12px 14px; }
+#workArea .panel-head { margin-bottom: 8px; flex-wrap: wrap; gap: 6px; }

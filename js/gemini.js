@@ -37,7 +37,7 @@ const Gemini = (() => {
 
   // parts: [{ text }, { inline_data: { mime_type, data } }, ...]  →  JSON 객체
   async function generateJson(parts) {
-    if (!getKey()) throw new Error('Gemini API 키가 없습니다. "채점 기준" 탭 아래쪽 설정에서 입력해 주세요.');
+    if (!getKey()) throw new Error('Gemini API 키가 없습니다. ⚙ 설정 아래쪽에서 입력해 주세요.');
     const body = {
       contents: [{ role: 'user', parts }],
       generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
