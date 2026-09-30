@@ -12,7 +12,11 @@
 //  - group.requires: 이 조건(정규식)이 제출물에 없으면 그 영역 체크를 자동으로 전부 해제.
 // 과목에 상관없이 쓸 수 있도록 과목 전용 규칙은 모두 루브릭 데이터 안에 둔다.
 const Grading = (() => {
-  const AUTO_TYPES = { none: '직접 확인', keyword: '키워드(하나라도)', keywordAll: '키워드(모두)', regex: '정규식', filled: '표/항목 뒤 내용 채움' };
+  const AUTO_TYPES = { none: '직접 확인', keyword: '키워드(하나라도)', keywordAll: '키워드(모두)', regex: '정규식', filled: '표/항목 뒤 내용 채움', section: '활동(구역) 작성 여부' };
+
+  // 기본 제공 기준을 고치면 올리는 번호. 저장돼 있던 기준(과제별 복사본)은 불러올 때 이 번호를 보고
+  // 기본 제공 항목의 자동 감지 규칙·근거 문장을 새 것으로 맞춘다(배점·이름은 선생님 것 유지).
+  const PRESET_VERSION = 3;
 
   function hash(str) {
     let h = 5381;
@@ -24,6 +28,7 @@ const Grading = (() => {
   const INFO_SCIENCE_STACK_QUEUE = {
     name: '정보과학 — 함수를 활용한 스택·큐 프로그램 구현 (1차 수행평가)',
     step: 5, // 배점은 5점 단위(소수점 없음)
+    presetVersion: 3,
     baseScore: 0,
     groups: [
       {
@@ -56,11 +61,12 @@ const Grading = (() => {
           // 그 항목 뒤에 실제 내용이 채워졌는지(다음 표 항목이 나오기 전까지)를 본다.
           // 스택 회차·큐 회차 각각 5점. 오버플로우·언더플로우 중 한 칸만 채웠으면 5점은 주고,
           // 빈 칸은 "예전 기준 -2.5점 사항"으로 코멘트에 남긴다(배점은 5점 단위로만).
-          { id: 'exc_s_flow', label: '스택: 오버플로우·언더플로우 예외 처리', points: 5, scope: 'stack', auto: { type: 'filled', pattern: '오버플로우, 언더플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법' }, reason: '스택의 오버플로우·언더플로우 처리 계획 칸이 비어 있는 것으로 보임' },
-          { id: 'exc_q_flow', label: '큐: 오버플로우·언더플로우 예외 처리', points: 5, scope: 'queue', auto: { type: 'filled', pattern: '오버플로우, 언더플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법' }, reason: '큐의 오버플로우·언더플로우 처리 계획 칸이 비어 있는 것으로 보임' },
-          // 테스트 코드도 스택 회차·큐 회차를 나눠 각각 확인("2회차" 표시 기준)
-          { id: 'exc_s_test', label: '스택: 테스트 코드로 연산 실행 결과 검증', points: 5, scope: 'stack', auto: { type: 'regex', pattern: 'print\\s*\\(' }, reason: '스택 연산의 실행 결과를 확인하는 테스트 코드(print)가 없음' },
-          { id: 'exc_q_test', label: '큐: 테스트 코드로 연산 실행 결과 검증', points: 5, scope: 'queue', auto: { type: 'regex', pattern: 'print\\s*\\(' }, reason: '큐 연산의 실행 결과를 확인하는 테스트 코드(print)가 없음' },
+          { id: 'exc_s_flow', label: '스택: 오버플로우·언더플로우 예외 처리', points: 5, scope: 'stack', auto: { type: 'filled', pattern: '오버플로우, 언더플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법', within: '활동2' }, reason: '스택의 오버플로우·언더플로우 처리 계획 칸이 비어 있는 것으로 보임' },
+          { id: 'exc_q_flow', label: '큐: 오버플로우·언더플로우 예외 처리', points: 5, scope: 'queue', auto: { type: 'filled', pattern: '오버플로우, 언더플로우', stopAt: '오버플로우, 언더플로우, 예외 상황, 발생 조건, 처리 방법', within: '활동2' }, reason: '큐의 오버플로우·언더플로우 처리 계획 칸이 비어 있는 것으로 보임' },
+          // 테스트 검증은 각 회차의 "활동4. 테스트 케이스 및 실행 결과 검증" 표에 학생이 실제로
+          // 적었는지로 본다(활동3 코드 안의 print는 인정하지 않음). 유형 'section' 참고.
+          { id: 'exc_s_test', label: '스택: 테스트 코드로 연산 실행 결과 검증', points: 5, scope: 'stack', auto: { type: 'section', pattern: '활동4', stopAt: '번호, 입력값(수행 동작), 예상 출력, 실제 출력, 일치 여부' }, reason: '스택 활동4(테스트 케이스 및 실행 결과 검증) 표가 비어 있음' },
+          { id: 'exc_q_test', label: '큐: 테스트 코드로 연산 실행 결과 검증', points: 5, scope: 'queue', auto: { type: 'section', pattern: '활동4', stopAt: '번호, 입력값(수행 동작), 예상 출력, 실제 출력, 일치 여부' }, reason: '큐 활동4(테스트 케이스 및 실행 결과 검증) 표가 비어 있음' },
         ],
       },
     ],
@@ -159,6 +165,22 @@ const Grading = (() => {
     // 소수점 간격(예: 0.5, 2.5)은 쓰지 않음 → 기본 5점 간격으로
     r.step = Number.isInteger(Number(r.step)) && Number(r.step) >= 1 ? Number(r.step) : 5;
     r.baseScore = snap(r.baseScore, r.step);
+    // 기본 제공 기준에서 온 항목은 자동 감지 규칙을 최신으로(바뀐 항목 id는 syncedIds로 알려 다시 채점)
+    const synced = [];
+    if ((Number(r.presetVersion) || 0) < PRESET_VERSION) {
+      const presetChecks = {};
+      for (const pg of INFO_SCIENCE_STACK_QUEUE.groups) for (const pc of pg.checks) presetChecks[pc.id] = pc;
+      r.groups = (r.groups || []).map((g0) => Object.assign({}, g0, {
+        checks: (g0.checks || []).map((c0) => {
+          const pc = presetChecks[c0.id];
+          const same = (a, b) => !!a && (a.type || 'none') === (b.type || 'none') && (a.pattern || '') === (b.pattern || '') && (a.stopAt || '') === (b.stopAt || '') && (a.within || '') === (b.within || '');
+          if (!pc || (same(c0.auto, pc.auto) && (c0.scope || '') === (pc.scope || ''))) return c0;
+          synced.push(c0.id);
+          return Object.assign({}, c0, { auto: clone(pc.auto), scope: pc.scope || '', reason: pc.reason });
+        }),
+      }));
+      r.presetVersion = PRESET_VERSION;
+    }
     const groupIds = new Set();
     r.groups = (r.groups || []).map(migrateHalfGroup).map(migrateTestGroup).map((g, gi) => {
       const name = String(g.name || '평가 영역 ' + (gi + 1));
@@ -178,7 +200,10 @@ const Grading = (() => {
         const type = c.auto && AUTO_TYPES[c.auto.type] ? c.auto.type : 'none';
         const scope = c.scope === 'stack' || c.scope === 'queue' ? c.scope : '';
         const stopAt = c.auto && c.auto.stopAt ? String(c.auto.stopAt) : '';
-        return { id: cid, label, points: snap(c.points, r.step), auto: { type, pattern: String((c.auto && c.auto.pattern) || ''), stopAt }, reason: String(c.reason || ''), scope };
+        const within = c.auto && c.auto.within ? String(c.auto.within) : '';
+        const auto = { type, pattern: String((c.auto && c.auto.pattern) || ''), stopAt };
+        if (within) auto.within = within;
+        return { id: cid, label, points: snap(c.points, r.step), auto, reason: String(c.reason || ''), scope };
       });
       return { id: gid, name, base: snap(g.base, r.step), requires, aiBlock, checks };
     });
@@ -191,6 +216,7 @@ const Grading = (() => {
         type: f.type === 'match' ? 'match' : 'missing', pattern: String(f.pattern), message: String(f.message || ''),
         requiresPresent: f.requiresPresent ? String(f.requiresPresent) : '',
       }));
+    Object.defineProperty(r, '_syncedIds', { value: synced, enumerable: false });
     return r;
   }
 
@@ -233,10 +259,12 @@ const Grading = (() => {
     if (!auto || auto.type === 'none') return { met: false, manual: true, evidence: '' };
     if (!text) return { met: false, evidence: '' };
     const low = text.toLowerCase();
+    // 키워드·정규식은 학습지에 원래 인쇄된 문구(원본과 같은 줄)에 걸리지 않도록, 원본을 알면 학생이 쓴 줄에서만 찾는다.
     if (auto.type === 'keyword' || auto.type === 'keywordAll') {
       const kws = splitKw(auto.pattern);
       if (!kws.length) return { met: false, manual: true, evidence: '' };
-      const found = kws.filter((k) => low.includes(k.toLowerCase()));
+      const own = studentOnly(text).toLowerCase();
+      const found = kws.filter((k) => own.includes(k.toLowerCase()));
       const missing = kws.filter((k) => !found.includes(k));
       const met = auto.type === 'keyword' ? found.length > 0 : missing.length === 0;
       if (met) return { met, evidence: '키워드 발견: ' + found.join(', ') };
@@ -250,9 +278,31 @@ const Grading = (() => {
     if (auto.type === 'regex') {
       const re = safeRegex(auto.pattern);
       if (!re) return { met: false, evidence: '정규식 오류: ' + auto.pattern };
-      const m = re.exec(text);
-      if (m) return { met: true, evidence: m[0] ? '일치: ' + snippet(text, m.index, m[0].length) : '조건 일치' };
+      const own = studentOnly(text);
+      const m = re.exec(own);
+      if (m) return { met: true, evidence: m[0] ? '일치: ' + snippet(own, m.index, m[0].length) : '조건 일치' };
       return { met: false, evidence: '제출물에서 패턴 /' + auto.pattern + '/ 과 일치하는 부분을 찾지 못함' };
+    }
+    if (auto.type === 'section') {
+      // pattern(예: "활동4") 제목 줄 다음부터 다음 "■" 제목 전까지를 그 활동 구역으로 보고,
+      // 학습지에 원래 인쇄된 줄(원본과 같은 줄, 표 머리글 stopAt, 번호만 있는 줄, 안내문)을 뺀 뒤
+      // 학생이 쓴 글자가 있으면 작성한 것으로 본다.
+      const head = (auto.pattern || '').trim();
+      if (!head) return { met: false, manual: true, evidence: '' };
+      const body = sectionBody(text, head);
+      if (body == null) return { met: false, evidence: '"' + head + '" 구역을 문서에서 찾지 못함' };
+      const ignore = new Set(splitKw(auto.stopAt).map(lineKey));
+      const written = body.split('\n').filter((l) => {
+        const k = lineKey(l);
+        if (!k || /^\d+[.)]?$/.test(k) || ignore.has(k)) return false;
+        if (templateKeys && templateKeys.has(k)) return false;
+        if (/하시오\.?$/.test(k)) return false; // 안내문
+        return true;
+      }).join(' ');
+      if ((written.match(/[가-힣A-Za-z0-9]/g) || []).length >= 4) {
+        return { met: true, evidence: '"' + head + '" 작성됨: "' + written.replace(/\s+/g, ' ').slice(0, 60) + '"' };
+      }
+      return { met: false, evidence: '"' + head + '" 구역(표)이 비어 있음' };
     }
     if (auto.type === 'filled') {
       // "라벨" 항목 자체(표 헤더 등)는 늘 문서에 인쇄돼 있어 단순 키워드로는 빈칸도 항상
@@ -261,12 +311,19 @@ const Grading = (() => {
       const labels = splitKw(auto.pattern);
       if (!labels.length) return { met: false, manual: true, evidence: '' };
       const stopWords = splitKw(auto.stopAt || auto.pattern);
-      const filledText = (label) => {
-        const idx = low.indexOf(label.toLowerCase());
-        if (idx < 0) return null;
+      // within(예: "활동2")이 있으면 그 활동 구역 안에서만 찾고, 안내문(…하시오) 줄은 뺀다.
+      let region = text;
+      if (auto.within) {
+        const b = sectionBody(text, auto.within);
+        if (b == null) return { met: false, evidence: '"' + auto.within + '" 구역을 문서에서 찾지 못함' };
+        region = b;
+      }
+      region = region.split('\n').filter((l) => !/하시오\.?\s*$/.test(l.trim())).join('\n');
+      const rlow = region.toLowerCase();
+      const filledAt = (label, idx) => {
         // 칸 내용은 같은 줄(표 오른쪽 칸)이나 다음 줄(칸 안 문단)에 올 수 있어, 다음 표 항목이
         // 나오기 전까지 최대 3줄을 본다. 원본 학습지를 알면 원본에 원래 있던 줄(인쇄된 안내문)은 뺀다.
-        let rest = text.slice(idx + label.length, idx + label.length + 300);
+        let rest = region.slice(idx + label.length, idx + label.length + 300);
         let cut = rest.length;
         for (const w of stopWords) {
           const wi = rest.toLowerCase().indexOf(w.toLowerCase());
@@ -276,6 +333,18 @@ const Grading = (() => {
           .filter((l, i) => i === 0 || !templateKeys || !templateKeys.has(lineKey(l)));
         rest = lines.join(' ').replace(/[\t]+/g, ' ').trim();
         return /[가-힣]{2,}|[A-Za-z]{3,}/.test(rest) ? rest : '';
+      };
+      // 라벨이 여러 번 나오면(안내문·표) 어느 한 곳이라도 채워졌는지 본다
+      const filledText = (label) => {
+        const l = label.toLowerCase();
+        let idx = rlow.indexOf(l), seen = false;
+        while (idx >= 0) {
+          seen = true;
+          const t = filledAt(label, idx);
+          if (t) return t;
+          idx = rlow.indexOf(l, idx + l.length);
+        }
+        return seen ? '' : null;
       };
       const found = [], empty = [];
       for (const label of labels) {
@@ -374,6 +443,21 @@ const Grading = (() => {
     return out;
   }
 
+  // 원본 학습지에 원래 있던 줄을 뺀 나머지(= 학생이 쓴 줄). 원본을 모르면 그대로.
+  function studentOnly(text) {
+    if (!templateKeys || !text) return text || '';
+    return text.split('\n').filter((l) => !templateKeys.has(lineKey(l))).join('\n');
+  }
+  // head(예: "활동4")가 들어간 제목 줄 다음부터 다음 "■" 제목 전까지. 못 찾으면 null.
+  function sectionBody(text, head) {
+    const hi = text.toLowerCase().indexOf(String(head).toLowerCase());
+    if (hi < 0) return null;
+    const nl = text.indexOf('\n', hi);
+    const start = nl < 0 ? text.length : nl + 1;
+    const next = text.indexOf('■', start);
+    return text.slice(start, next < 0 ? text.length : next);
+  }
+
   // ---- 미기입 판정 ----
   // 과제에 첨부된 원본(빈) 학습지의 텍스트를 알면, 제출물에서 원본에 없는 줄만 "학생이 쓴 내용"으로
   // 본다. 이름·학번 칸만 채운 경우는 쓴 것으로 치지 않는다. 원본을 모르면 코드(def)도 없고
@@ -415,6 +499,7 @@ const Grading = (() => {
 
   return {
     snap, migrateStudentChecks, commentFor,
+    syncedIds: (r) => (r && r._syncedIds) || [],
     AUTO_TYPES, normalize, defaultRubric, blankRubric, presets, hash,
     groupMax, rubricMax, rubricMin, groupScore, total, offStep,
     detect, explain, suggestChecks, reasonFor, detectFlags, isBlank, groupBlocked, isSuspect,

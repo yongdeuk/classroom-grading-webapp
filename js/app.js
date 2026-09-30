@@ -223,6 +223,9 @@
         regradeAll = true;
       }
       state.rubricTouched = false;
+      // 기본 제공 기준이 바뀌어 저장된 기준을 맞춘 항목(예: 테스트 검증을 활동4 표로 판정) → 학생마다 그 항목만 다시 판정
+      const syncedIds = Grading.syncedIds(state.rubric);
+      let syncChanged = 0;
 
       const rosterIds = new Set(students.map((s) => s.userId));
       const extraSubs = subs.filter((sub) => !rosterIds.has(sub.userId));
@@ -277,11 +280,17 @@
           s.blank = Grading.isBlank(state.rubric, s.text);
           // 바뀐 항목(스택/큐 테스트 코드)은 이 학생만 새로 자동 판정, 예전 항목의 선생님 수정·근거는 정리
           for (const id of OLD_IDS) { delete s.teacherChecks[id]; delete s.reasonEdits[id]; delete s.comments[id]; }
-          for (const id of mig.recheck || []) {
+          for (const id of (mig.recheck || []).concat(syncedIds)) {
+            if (s.teacherChecks[id] != null) continue; // 선생님이 직접 정한 체크는 그대로
             const g = state.rubric.groups.find((x) => x.checks.some((c) => c.id === id));
             const c = g && g.checks.find((x) => x.id === id);
-            if (c && s.text) s.checks[id] = s.blank ? false : Grading.explain(g, c, s.text, Grading.isSuspect(s)).met;
+            if (c && s.text) {
+              const v = s.blank ? false : Grading.explain(g, c, s.text, Grading.isSuspect(s)).met;
+              if (syncedIds.includes(id) && !!s.checks[id] !== v) { if (s.confirmed) { s.confirmed = false; } s.syncTouched = true; }
+              s.checks[id] = v;
+            }
           }
+          if (s.syncTouched) { syncChanged++; delete s.syncTouched; }
           // 미기입인데 저장된 체크가 남아 있으면(예전 버전에서 인쇄 문구에 키워드가 걸림) 확인 완료 전이면 최소점으로 다시 채점
           // 이전 판정으로 미기입(최소점) 처리됐는데 지금 보니 작성한 학생도 다시 채점
           const wasBlankScored = !s.confirmed && !s.blank && (prev.blank || (Object.keys(s.checks).length && Object.values(s.checks).every((v) => !v)));
@@ -301,6 +310,7 @@
       $('#docViewer').innerHTML = $('#gradingPanel').innerHTML = '<p class="muted">왼쪽 목록에서 학생을 선택하세요.</p>';
       $('#docViewer').dataset.key = '';
       persist();
+      if (syncChanged) toast('채점 기준이 새로 적용되어(예외 처리: 활동2 표·활동4 표에 직접 쓴 내용으로 판정) ' + syncChanged + '명의 점수가 바뀌었습니다. 해당 학생은 확인 완료가 풀렸습니다.', 9000);
       if (halfChanged) toast('예외 처리 채점 항목이 바뀌어(스택/큐 테스트 코드로 나눔) ' + halfChanged + '명을 새로 채점했습니다 — 확인 완료를 풀었으니 다시 확인해 주세요.', 8000);
       if (legacy) toast('예전 형식의 채점 기준을 새 기준(5점 간격)으로 바꿨습니다. 확인 완료 표시는 다시 해 주세요.', 6000);
 
