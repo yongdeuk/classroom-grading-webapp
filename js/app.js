@@ -892,7 +892,7 @@
       ? `<div class="hidden-bar">삭제한 학생 ${state.hidden.size}명 <button class="link-btn" id="restoreHiddenBtn">모두 되돌리기</button></div>`
       : '';
     const nSub = visible.filter((s) => s.status !== '미제출').length;
-    const scoreBar = `<div class="list-tools"><span class="list-count">총 제출 <b>${nSub}</b>명</span></div>`;
+    const scoreBar = `<div class="list-tools"><span class="list-count">제출 <b>${nSub}</b>명 · 미제출 <b>${visible.length - nSub}</b>명</span></div>`;
     updateScoreToggle();
     wrap.classList.toggle('hide-scores', !state.showScores);
     wrap.innerHTML = scoreBar + restoreBar + visible
