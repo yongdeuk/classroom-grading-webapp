@@ -16,7 +16,7 @@ const Grading = (() => {
 
   // 기본 제공 기준을 고치면 올리는 번호. 저장돼 있던 기준(과제별 복사본)은 불러올 때 이 번호를 보고
   // 기본 제공 항목의 자동 감지 규칙·근거 문장을 새 것으로 맞춘다(배점·이름은 선생님 것 유지).
-  const PRESET_VERSION = 7; // 7: 빈 양식에 걸리던 설계(조회·상태 확인) 규칙과 표 칸 채움 판정 고침 (6: 9/30 표 기준 판정을 되돌리고 9/29 방식으로 복귀)
+  const PRESET_VERSION = 8; // 8: 빈 양식 대응 수정(7)을 취소하고 이전 채점 방식으로 복귀 (6: 9/30 표 기준 판정을 되돌리고 9/29 방식으로 복귀)
 
   function hash(str) {
     let h = 5381;
@@ -28,17 +28,16 @@ const Grading = (() => {
   const INFO_SCIENCE_STACK_QUEUE = {
     name: '정보과학 — 함수를 활용한 스택·큐 프로그램 구현 (1차 수행평가)',
     step: 5, // 배점은 5점 단위(소수점 없음)
-    presetVersion: 7,
+    presetVersion: 8,
     baseScore: 0,
     groups: [
       {
         id: 'design', name: '자료구조 및 함수 설계의 적절성', base: 20,
-        // 설계표에 이미 인쇄된 한글 행 이름(조회·비어있는지 확인 등)에는 걸리지 않도록, 학생이 적는 영문 함수명만 본다.
         checks: [
           { id: 'design_s_io', label: '스택: 삽입(push)·삭제(pop) 연산 설계', points: 5, auto: { type: 'keywordAll', pattern: 'push, pop' }, reason: '스택의 삽입·삭제 연산 설계가 확인되지 않음' },
-          { id: 'design_s_peek', label: '스택: 조회(peek)·상태 확인(isEmpty) 설계', points: 5, auto: { type: 'regex', pattern: '\\b(peek|top)\\b[\\s\\S]*is_?empty|is_?empty[\\s\\S]*\\b(peek|top)\\b' }, reason: '스택의 조회·상태 확인 연산 설계가 확인되지 않음' },
+          { id: 'design_s_peek', label: '스택: 조회(peek)·상태 확인(isEmpty) 설계', points: 5, auto: { type: 'regex', pattern: '(peek|top|조회)[\\s\\S]*(is_?empty|비어)|(is_?empty|비어)[\\s\\S]*(peek|top|조회)' }, reason: '스택의 조회·상태 확인 연산 설계가 확인되지 않음' },
           { id: 'design_q_io', label: '큐: 삽입(enqueue)·삭제(dequeue) 연산 설계', points: 5, auto: { type: 'keywordAll', pattern: 'enqueue, dequeue' }, reason: '큐의 삽입·삭제 연산 설계가 확인되지 않음' },
-          { id: 'design_q_peek', label: '큐: 조회(front/peek)·상태 확인 설계', points: 5, auto: { type: 'regex', pattern: '\\b(front|peek)\\b[\\s\\S]*is_?empty|is_?empty[\\s\\S]*\\b(front|peek)\\b' }, reason: '큐의 조회·상태 확인 연산 설계가 확인되지 않음' },
+          { id: 'design_q_peek', label: '큐: 조회(front/peek)·상태 확인 설계', points: 5, auto: { type: 'regex', pattern: '(front|peek|조회)[\\s\\S]*(is_?empty|비어)|(is_?empty|비어)[\\s\\S]*(front|peek|조회)' }, reason: '큐의 조회·상태 확인 연산 설계가 확인되지 않음' },
         ],
       },
       {
@@ -304,19 +303,9 @@ const Grading = (() => {
       // 라벨을 쉼표로 여러 개 주면 모두 채워져야 충족.
       const labels = splitKw(auto.pattern);
       if (!labels.length) return { met: false, manual: true, evidence: '' };
-      const stopWords = splitKw(auto.stopAt || auto.pattern).concat('■');
-      // 항목 이름이 표에서 한 칸을 통째로 차지하는 곳(앞뒤가 줄바꿈·탭·|)을 먼저 찾는다. 문제 설명문·활동 안내
-      // ("… 오버플로우 예외 처리 필요)", "-오버플로우·언더플로우 상황과 …") 속의 같은 낱말은 표 칸이 아니라서 제외.
-      // 못 찾으면(표 모양이 깨진 문서) 문서에서 가장 마지막에 나온 곳을 쓴다(표는 설명문보다 뒤에 있음).
-      const reEsc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const findCell = (label) => {
-        const body = label.replace(/\s+/g, '').split('').map(reEsc).join('\\s*');
-        const m = new RegExp('(^|[\\r\\n\\t|])[ \\u00a0]*' + body + '[ \\u00a0]*[:：]?(?=[\\t\\r\\n|]|$)', 'i').exec(text);
-        if (m) return m.index + m[0].length - label.length; // 뒤 코드가 idx + label.length 를 쓰므로 맞춰 줌
-        return low.lastIndexOf(label.toLowerCase());
-      };
+      const stopWords = splitKw(auto.stopAt || auto.pattern);
       const filledText = (label) => {
-        const idx = findCell(label);
+        const idx = low.indexOf(label.toLowerCase());
         if (idx < 0) return null;
         // 칸 내용은 같은 줄(표 오른쪽 칸)이나 다음 줄(칸 안 문단)에 올 수 있어, 다음 표 항목이
         // 나오기 전까지 최대 3줄을 본다. 원본 학습지를 알면 원본에 원래 있던 줄(인쇄된 안내문)은 뺀다.
