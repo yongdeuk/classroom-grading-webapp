@@ -120,7 +120,7 @@ const Grading = (() => {
           { id: 'e1', label: '예외 상황을 처리하지 않더라도 프로그램의 정상 동작 여부를 확인함', points: 5, scope: 'any', auto: ROWS4(1), reason: '활동4 표에 프로그램 동작을 확인한 내용이 없음' },
           { id: 'e2', label: '오버플로우 또는 언더플로우 중 1가지 예외 상황을 처리하고 1가지 입력값으로 검증함', points: 5, scope: 'any', auto: { type: 'all', parts: [Object.assign({}, FLOW, { min: 1 }), ROWS4(1)] }, reason: '활동2의 예외 처리 계획과 활동4의 검증 입력값이 함께 확인되지 않음' },
           { id: 'e3', label: '오버플로우 또는 언더플로우 중 1가지 예외 상황을 처리하고 2가지 이상의 입력값으로 검증함', points: 5, scope: 'any', auto: { type: 'all', parts: [Object.assign({}, FLOW, { min: 1 }), ROWS4(2)] }, reason: '활동2의 예외 처리 계획과 활동4의 2가지 이상 검증 입력값이 함께 확인되지 않음' },
-          { id: 'e4', label: '오버플로우와 언더플로우 예외 상황을 모두 함수 내에서 처리하고 3가지 이상의 입력값으로 검증하여 오류를 스스로 수정함', points: 5, scope: 'any', auto: { type: 'all', parts: [Object.assign({}, FLOW, { min: 2 }), ROWS4(3)] }, reason: '오버플로우·언더플로우를 모두 처리하고 3가지 이상의 입력값으로 검증한 내용이 확인되지 않음(오류 수정은 직접 확인)' },
+          { id: 'e4', label: '오버플로우와 언더플로우 예외 상황을 모두 함수 내에서 처리하고 3가지 이상의 입력값으로 검증하여 오류를 스스로 수정함', points: 5, scope: 'both', auto: { type: 'all', parts: [Object.assign({}, FLOW, { min: 2 }), ROWS4(3)] }, reason: '오버플로우·언더플로우를 모두 처리하고 3가지 이상의 입력값으로 검증한 내용이 확인되지 않음(오류 수정은 직접 확인)' },
         ],
       },
     ],
