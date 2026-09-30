@@ -16,7 +16,7 @@ const Grading = (() => {
 
   // 기본 제공 기준을 고치면 올리는 번호. 저장돼 있던 기준(과제별 복사본)은 불러올 때 이 번호를 보고
   // 기본 제공 항목의 자동 감지 규칙·근거 문장을 새 것으로 맞춘다(배점·이름은 선생님 것 유지).
-  const PRESET_VERSION = 3;
+  const PRESET_VERSION = 4;
 
   function hash(str) {
     let h = 5381;
@@ -28,16 +28,17 @@ const Grading = (() => {
   const INFO_SCIENCE_STACK_QUEUE = {
     name: '정보과학 — 함수를 활용한 스택·큐 프로그램 구현 (1차 수행평가)',
     step: 5, // 배점은 5점 단위(소수점 없음)
-    presetVersion: 3,
+    presetVersion: 4,
     baseScore: 0,
     groups: [
       {
         id: 'design', name: '자료구조 및 함수 설계의 적절성', base: 20,
         checks: [
-          { id: 'design_s_io', label: '스택: 삽입(push)·삭제(pop) 연산 설계', points: 5, auto: { type: 'keywordAll', pattern: 'push, pop' }, reason: '스택의 삽입·삭제 연산 설계가 확인되지 않음' },
-          { id: 'design_s_peek', label: '스택: 조회(peek)·상태 확인(isEmpty) 설계', points: 5, auto: { type: 'regex', pattern: '(peek|top|조회)[\\s\\S]*(is_?empty|비어)|(is_?empty|비어)[\\s\\S]*(peek|top|조회)' }, reason: '스택의 조회·상태 확인 연산 설계가 확인되지 않음' },
-          { id: 'design_q_io', label: '큐: 삽입(enqueue)·삭제(dequeue) 연산 설계', points: 5, auto: { type: 'keywordAll', pattern: 'enqueue, dequeue' }, reason: '큐의 삽입·삭제 연산 설계가 확인되지 않음' },
-          { id: 'design_q_peek', label: '큐: 조회(front/peek)·상태 확인 설계', points: 5, auto: { type: 'regex', pattern: '(front|peek|조회)[\\s\\S]*(is_?empty|비어)|(is_?empty|비어)[\\s\\S]*(front|peek|조회)' }, reason: '큐의 조회·상태 확인 연산 설계가 확인되지 않음' },
+          // 설계는 각 회차 "활동1. 자료구조 및 함수 설계" 표에 쓴 내용으로만 판정(활동3 코드의 push·pop 등은 인정 안 함)
+          { id: 'design_s_io', label: '스택: 삽입(push)·삭제(pop) 연산 설계', points: 5, scope: 'stack', auto: { type: 'filled', pattern: '스택 삽입(등록), 스택 삭제(취소/복구)', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 스택 삽입(등록), 스택 삭제(취소/복구), (자유 추가)', within: '활동1' }, reason: '스택 활동1 설계표의 삽입·삭제 연산 칸(함수명 등)이 비어 있음' },
+          { id: 'design_s_peek', label: '스택: 조회(peek)·상태 확인(isEmpty) 설계', points: 5, scope: 'stack', auto: { type: 'regex', pattern: '(peek|top|조회)[\\s\\S]*(is_?empty|비어|비었)|(is_?empty|비어|비었)[\\s\\S]*(peek|top|조회)', within: '활동1' }, reason: '스택 활동1 설계표에 조회·상태 확인 연산 설계가 없음' },
+          { id: 'design_q_io', label: '큐: 삽입(enqueue)·삭제(dequeue) 연산 설계', points: 5, scope: 'queue', auto: { type: 'filled', pattern: '큐 삽입(접수), 큐 삭제(처리)', stopAt: '연산 구분, 함수명, 매개변수, 반환값, 큐 삽입(접수), 큐 삭제(처리), (자유 추가)', within: '활동1' }, reason: '큐 활동1 설계표의 삽입·삭제 연산 칸(함수명 등)이 비어 있음' },
+          { id: 'design_q_peek', label: '큐: 조회(front/peek)·상태 확인 설계', points: 5, scope: 'queue', auto: { type: 'regex', pattern: '(front|peek|조회)[\\s\\S]*(is_?empty|비어|비었)|(is_?empty|비어|비었)[\\s\\S]*(front|peek|조회)', within: '활동1' }, reason: '큐 활동1 설계표에 조회·상태 확인 연산 설계가 없음' },
         ],
       },
       {
@@ -258,6 +259,13 @@ const Grading = (() => {
   function detect(auto, text) {
     if (!auto || auto.type === 'none') return { met: false, manual: true, evidence: '' };
     if (!text) return { met: false, evidence: '' };
+    // within(예: "활동1")이 있으면 키워드·정규식은 그 활동 구역(안내문 줄 제외) 안에서만 찾는다
+    if (auto.within && auto.type !== 'filled' && auto.type !== 'section') {
+      const b = sectionBody(text, auto.within);
+      if (b == null) return { met: false, evidence: '"' + auto.within + '" 구역을 문서에서 찾지 못함' };
+      text = b.split('\n').filter((l) => !/하시오\.?\s*$/.test(l.trim())).join('\n');
+      if (!text.trim()) return { met: false, evidence: '"' + auto.within + '" 구역이 비어 있음' };
+    }
     const low = text.toLowerCase();
     // 키워드·정규식은 학습지에 원래 인쇄된 문구(원본과 같은 줄)에 걸리지 않도록, 원본을 알면 학생이 쓴 줄에서만 찾는다.
     if (auto.type === 'keyword' || auto.type === 'keywordAll') {

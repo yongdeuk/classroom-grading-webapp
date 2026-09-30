@@ -310,7 +310,7 @@
       $('#docViewer').innerHTML = $('#gradingPanel').innerHTML = '<p class="muted">왼쪽 목록에서 학생을 선택하세요.</p>';
       $('#docViewer').dataset.key = '';
       persist();
-      if (syncChanged) toast('채점 기준이 새로 적용되어(예외 처리: 활동2 표·활동4 표에 직접 쓴 내용으로 판정) ' + syncChanged + '명의 점수가 바뀌었습니다. 해당 학생은 확인 완료가 풀렸습니다.', 9000);
+      if (syncChanged) toast('채점 기준이 새로 적용되어(설계=활동1 표, 예외 처리=활동2·활동4 표에 직접 쓴 내용으로 판정) ' + syncChanged + '명의 점수가 바뀌었습니다. 해당 학생은 확인 완료가 풀렸습니다.', 9000);
       if (halfChanged) toast('예외 처리 채점 항목이 바뀌어(스택/큐 테스트 코드로 나눔) ' + halfChanged + '명을 새로 채점했습니다 — 확인 완료를 풀었으니 다시 확인해 주세요.', 8000);
       if (legacy) toast('예전 형식의 채점 기준을 새 기준(5점 간격)으로 바꿨습니다. 확인 완료 표시는 다시 해 주세요.', 6000);
 
