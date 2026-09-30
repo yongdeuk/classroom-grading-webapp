@@ -96,6 +96,8 @@
     state.selectedUserId = null;
     state.checkedIds.clear();
     Grading.setTemplate(null);
+    state.classroomTemplate = '';
+    state.templateSource = '';
     $('#workArea').classList.add('hidden');
     $('#gradeEmpty').classList.remove('hidden');
     $('#docViewer').dataset.key = '';
@@ -203,7 +205,7 @@
       subs.forEach((sub) => { subByUserId[sub.userId] = sub; });
 
       // 과제에 첨부된 원본 학습지 텍스트 — 미기입 판정 기준(없거나 실패하면 코드·표 칸 유무로 판단)
-      Grading.setTemplate(await loadTemplateText());
+      state.classroomTemplate = await loadTemplateText();
 
       const cached = Store.load(state.courseId, state.courseWorkId);
       const cachedStudents = (cached && cached.students) || {};
@@ -223,6 +225,7 @@
         regradeAll = true;
       }
       state.rubricTouched = false;
+      applyTemplate(); // 올린 빈 양식 > 클래스룸 첨부 학습지
       // 기본 제공 기준이 바뀌어 저장된 기준을 맞춘 항목(예: 테스트 검증을 활동4 표로 판정) → 학생마다 그 항목만 다시 판정
       const syncedIds = Grading.syncedIds(state.rubric);
       let syncChanged = 0;
@@ -463,11 +466,13 @@
     persist();
     if (rerenderEditor) renderRubricEditor();
     renderRubricSummary();
+    renderRefDocs();
     renderAllGrading();
   }
 
   // ---------------- 채점 기준 탭 ----------------
   function renderRubricTab() {
+    renderRefDocs();
     renderLibrary();
     renderRubricEditor();
     renderRubricSummary();
@@ -1113,6 +1118,7 @@
       </div>
       ${!absent ? `<div class="teacher-bar">
         <button class="btn primary small" id="teacherSaveBtn">💾 교사 수정 저장</button>
+        <button class="btn ghost small" id="sampleBtn" title="이 학생 제출물을 100점 샘플로 지정해, 채점 기준 탭에서 규칙이 맞는지 확인합니다">⭐ 100점 샘플로 지정</button>
         <button class="btn ghost small" id="commentOneBtn" title="이 학생 제출 파일에 감점 근거를 댓글로 남깁니다(보내기 전에 미리보기)">💬 근거 댓글${s.feedbackPosted ? ' ✓' : ''}</button>
         <span class="muted">${s.teacherSavedAt ? '저장 ' + esc(new Date(s.teacherSavedAt).toLocaleString('ko-KR')) + ' · ' : ''}선생님이 바꾼 체크는 자동 재채점·Claude 채점을 해도 유지됩니다</span>
       </div>` : ''}
@@ -1161,6 +1167,12 @@
         renderStudentList();
         persist();
       });
+    });
+    const sBtn = el.querySelector('#sampleBtn');
+    if (sBtn) sBtn.addEventListener('click', () => {
+      if (!s.text) { toast('추출된 텍스트가 없습니다'); return; }
+      setRefDoc('full', { name: s.name + ' 제출물', text: s.text, at: Date.now(), from: 'student' });
+      toast(s.name + ' 제출물을 100점 샘플로 지정했습니다 — 채점 기준 탭에서 항목별 확인 결과를 보세요', 5000);
     });
     const cOne = el.querySelector('#commentOneBtn');
     if (cOne) cOne.addEventListener('click', () => openCommentModal([s]));
@@ -1252,6 +1264,96 @@
         cgBtn.textContent = '🤖 Claude로 채점';
       }
     });
+  }
+
+  // ---------------- 기준 검증용 문서(빈 양식 · 100점 샘플) ----------------
+  // 빈 양식: 원본에 인쇄된 줄은 "학생이 쓴 내용"에서 빼는 기준(클래스룸 첨부 학습지보다 우선).
+  // 100점 샘플: 각 항목 규칙을 미리 돌려 봐서, 빈 양식에서 충족되거나 샘플에서 미충족인 항목을 빨갛게 알려 준다.
+  const REF_LABEL = { blank: '빈 양식', full: '100점 샘플' };
+
+  function refDocs() { return state.rubric.refDocs || {}; }
+
+  // 과제를 불러올 때와 빈 양식을 바꿀 때: 쓸 원본 텍스트를 정한다(올린 빈 양식 > 클래스룸 첨부 학습지)
+  function applyTemplate() {
+    const up = refDocs().blank;
+    if (up && up.text) { Grading.setTemplate(up.text); state.templateSource = 'upload'; }
+    else { Grading.setTemplate(state.classroomTemplate || ''); state.templateSource = state.classroomTemplate ? 'classroom' : ''; }
+  }
+
+  function setRefDoc(kind, doc) {
+    state.rubric.refDocs = Object.assign({}, refDocs());
+    if (doc) state.rubric.refDocs[kind] = doc; else delete state.rubric.refDocs[kind];
+    if (kind === 'blank') {
+      applyTemplate();
+      if (state.loaded) {
+        // 원본이 바뀌면 "학생이 쓴 내용" 판단이 달라지므로 미기입·자동 채점을 다시(확인 완료 학생 제외)
+        for (const s of state.students) s.blank = Grading.isBlank(state.rubric, s.text);
+        regradeUnconfirmed();
+      }
+    }
+    persist();
+    renderRefDocs();
+    renderAllGrading();
+  }
+
+  async function handleRefFile(kind, file) {
+    const st = $('#ref' + (kind === 'blank' ? 'Blank' : 'Full') + 'Status');
+    st.textContent = '"' + file.name + '" 읽는 중…';
+    try {
+      const text = await Extract.extractLocal(file);
+      setRefDoc(kind, { name: file.name, text, at: Date.now(), from: 'upload' });
+      toast(REF_LABEL[kind] + '을(를) 등록했습니다');
+    } catch (e) {
+      st.textContent = '❌ ' + e.message;
+    }
+  }
+
+  function renderRefDocs() {
+    const docs = refDocs();
+    const fmt = (d) => d ? `<b>${esc(d.name)}</b> <span class="muted">(${d.from === 'student' ? '학생 제출물에서 지정' : '업로드'} · ${esc(new Date(d.at).toLocaleString('ko-KR'))})</span>` : '';
+    $('#refBlankStatus').innerHTML = docs.blank ? fmt(docs.blank)
+      : state.templateSource === 'classroom' ? '<span class="muted">올린 파일 없음 — 과제에 첨부된 학습지를 빈 양식으로 사용 중</span>'
+      : '<span class="muted">없음</span>';
+    $('#refFullStatus').innerHTML = docs.full ? fmt(docs.full) : '<span class="muted">없음 — 파일을 올리거나, 채점 화면에서 100점 학생을 골라 "⭐ 100점 샘플로 지정"</span>';
+    $('#refBlankClear').classList.toggle('hidden', !docs.blank);
+    $('#refFullClear').classList.toggle('hidden', !docs.full);
+
+    const blankText = docs.blank ? docs.blank.text : state.classroomTemplate || '';
+    const fullText = docs.full ? docs.full.text : '';
+    const out = $('#refResult');
+    if (!blankText && !fullText) { out.innerHTML = ''; return; }
+    const v = Grading.validate(state.rubric, blankText, fullText);
+    const bad = v.rows.filter((x) => x.blankBad || x.fullBad).length;
+    out.innerHTML = `
+      <div class="ref-summary ${bad ? 'bad' : 'ok'}">
+        ${bad ? `⚠ 규칙을 고쳐야 할 항목 ${bad}개` : '✅ 모든 항목이 빈 양식에서는 미충족, 100점 샘플에서는 충족'}
+        ${blankText ? ` · 빈 양식 점수 <b>${v.blankTotal}</b>점(기대 ${Grading.rubricMin(state.rubric)}점)` : ''}
+        ${fullText ? ` · 100점 샘플 점수 <b>${v.fullTotal}</b>점(기대 ${Grading.rubricMax(state.rubric)}점)` : ''}
+      </div>
+      <table class="ref-table">
+        <thead><tr><th>채점 항목</th>${blankText ? '<th>빈 양식</th>' : ''}${fullText ? '<th>100점 샘플</th>' : ''}</tr></thead>
+        <tbody>${v.rows.map((x) => `
+          <tr>
+            <td>${esc(x.label)} <span class="muted">+${x.points}</span></td>
+            ${blankText ? `<td class="${x.blankBad ? 'bad' : ''}" title="${esc(x.blankReason)}">${x.blankMet ? '✓ 충족 — 인쇄 문구에 걸림' : '✗'}</td>` : ''}
+            ${fullText ? `<td class="${x.fullBad ? 'bad' : ''}" title="${esc(x.fullReason)}">${x.fullMet ? '✓' : '✗ 미충족 — ' + esc(x.fullReason)}</td>` : ''}
+          </tr>`).join('')}</tbody>
+      </table>
+      <p class="hint">빨간 칸은 그 항목의 자동 감지 규칙(키워드·정규식 등)이 이 과제 양식과 맞지 않는다는 뜻입니다. 위 "현재 채점 기준"에서 규칙을 고치거나 "직접 확인"으로 바꿔 주세요. 칸에 마우스를 올리면 판정 근거가 보입니다.</p>`;
+  }
+
+  for (const kind of ['blank', 'full']) {
+    const K = kind === 'blank' ? 'Blank' : 'Full';
+    const input = $('#ref' + K + 'Input');
+    $('#ref' + K + 'Btn').addEventListener('click', () => input.click());
+    input.addEventListener('change', () => { const f = input.files[0]; input.value = ''; if (f) handleRefFile(kind, f); });
+    $('#ref' + K + 'Clear').addEventListener('click', () => {
+      if (confirm(REF_LABEL[kind] + '을(를) 지울까요?')) setRefDoc(kind, null);
+    });
+    const box = $('#ref' + K + 'Box');
+    box.addEventListener('dragover', (e) => { e.preventDefault(); box.classList.add('over'); });
+    box.addEventListener('dragleave', () => box.classList.remove('over'));
+    box.addEventListener('drop', (e) => { e.preventDefault(); box.classList.remove('over'); const f = e.dataTransfer.files[0]; if (f) handleRefFile(kind, f); });
   }
 
   // ---------------- 감점 근거 댓글(학생 제출 파일에 드라이브 댓글) ----------------

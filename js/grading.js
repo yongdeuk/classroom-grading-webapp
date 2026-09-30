@@ -220,6 +220,13 @@ const Grading = (() => {
     if (r.groups.some((g) => g.aiBlock) && !(r.flags || []).some((f) => f && f.pattern === CLASS_RE) && Array.isArray(raw)) {
       r.flags = [{ type: 'missing', pattern: CLASS_RE, message: 'class 없이 구현됨' }];
     }
+    // 기준 검증용 문서(빈 양식·100점 샘플) — 텍스트만 보관
+    const rd = {};
+    for (const k of ['blank', 'full']) {
+      const d = r.refDocs && r.refDocs[k];
+      if (d && d.text) rd[k] = { name: String(d.name || k), text: String(d.text), at: Number(d.at) || Date.now(), from: d.from === 'student' ? 'student' : 'upload' };
+    }
+    if (Object.keys(rd).length) r.refDocs = rd; else delete r.refDocs;
     r.flags = (r.flags || [])
       .filter((f) => f && f.pattern && !/import\\s\+collections/.test(f.pattern)) // 내장 모듈 의심 신호는 뺐음
       .map((f) => ({
@@ -489,7 +496,9 @@ const Grading = (() => {
   // 표 칸(오버플로우 등)도 비어 있을 때만 미기입.
   const lineKey = (l) => l.replace(/\s+/g, '');
   let templateKeys = null;
+  let templateText = '';
   function setTemplate(text) {
+    templateText = text || '';
     templateKeys = text ? new Set(String(text).split('\n').map(lineKey).filter(Boolean)) : null;
   }
   function hasTemplate() { return !!templateKeys; }
@@ -520,6 +529,33 @@ const Grading = (() => {
     return true;
   }
 
+  // 각 항목을 빈 양식·100점 샘플에 돌려 본다. 빈 양식에서 충족(=인쇄 문구에 걸림)이나
+  // 샘플에서 미충족(=규칙이 양식과 안 맞음)이면 bad. 빈 양식을 원본으로 두고 판단한다.
+  function validate(r, blankText, fullText) {
+    const prev = templateText;
+    setTemplate(blankText || prev);
+    try {
+      const rows = [];
+      const bChecks = {}, fChecks = {};
+      for (const g of r.groups) for (const c of g.checks) {
+        const b = blankText ? explain(g, c, blankText, false) : null;
+        const f = fullText ? explain(g, c, fullText, false) : null;
+        const manual = !c.auto || c.auto.type === 'none';
+        if (b) bChecks[c.id] = b.met;
+        if (f) fChecks[c.id] = f.met;
+        rows.push({
+          id: c.id, label: c.label, points: c.points, manual,
+          blankMet: !!(b && b.met), blankReason: b ? b.reason : '',
+          fullMet: !!(f && f.met), fullReason: f ? f.reason : '',
+          blankBad: !!(b && b.met), fullBad: !!(f && !f.met && !manual),
+        });
+      }
+      return { rows, blankTotal: total(r, bChecks, '제출'), fullTotal: total(r, fChecks, '제출') };
+    } finally {
+      setTemplate(prev);
+    }
+  }
+
   function presets() { return PRESETS.map((p) => ({ key: p.key, name: p.rubric.name, rubric: normalize(clone(p.rubric)) })); }
 
   return {
@@ -528,6 +564,6 @@ const Grading = (() => {
     AUTO_TYPES, normalize, defaultRubric, blankRubric, presets, hash,
     groupMax, rubricMax, rubricMin, groupScore, total, offStep,
     detect, explain, suggestChecks, reasonFor, detectFlags, isBlank, groupBlocked, isSuspect,
-    setTemplate, hasTemplate, writtenText,
+    setTemplate, hasTemplate, writtenText, validate,
   };
 })();

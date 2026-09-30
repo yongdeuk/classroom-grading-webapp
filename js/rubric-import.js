@@ -339,5 +339,5 @@ const RubricImport = (() => {
     XLSX.writeFile(wb, '채점기준_' + r.name.replace(/[\\/:*?"<>|]/g, '_').slice(0, 40) + '.xlsx');
   }
 
-  return { importFile, exportXlsx };
+  return { importFile, exportXlsx, hwpText };
 })();

@@ -249,3 +249,18 @@ label.inline input { width: 70px; font-size: 12.5px; padding: 5px 8px; }
 .reason-box textarea::placeholder { color: #dc2626; opacity: .7; }
 .list-tools { justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap; }
 .list-count { font-size: 12px; color: var(--text); }
+/* 기준 검증용 문서 */
+.ref-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ref-box { border: 2px dashed #c7cbe0; border-radius: var(--radius); padding: 12px 14px; background: #fafbff; }
+.ref-box.over { border-color: var(--primary); background: #eef2ff; }
+.ref-title { font-weight: 700; font-size: 14px; margin-bottom: 6px; }
+.ref-status { font-size: 12.5px; margin-bottom: 8px; word-break: break-all; }
+.ref-actions { display: flex; gap: 6px; }
+.ref-summary { margin: 14px 0 8px; padding: 8px 12px; border-radius: 8px; font-size: 13px; }
+.ref-summary.ok { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+.ref-summary.bad { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+.ref-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.ref-table th, .ref-table td { border-bottom: 1px solid var(--border); padding: 5px 8px; text-align: left; vertical-align: top; }
+.ref-table th { font-size: 12px; color: var(--muted); font-weight: 600; }
+.ref-table td.bad { background: #fee2e2; color: #991b1b; font-weight: 600; }
+@media (max-width: 860px) { .ref-grid { grid-template-columns: 1fr; } }

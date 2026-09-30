@@ -113,5 +113,22 @@ const Extract = (() => {
     return { text: parts.join('\n\n'), status };
   }
 
-  return { extractSubmission, pptxText };
+  // 선생님 컴퓨터의 파일(빈 양식·100점 샘플)을 학생 제출물과 같은 방식으로 텍스트로
+  async function extractLocal(file) {
+    const name = (file.name || '').toLowerCase();
+    const buf = await file.arrayBuffer();
+    let text;
+    if (name.endsWith('.hwpx')) text = await hwpxText(buf);
+    else if (name.endsWith('.hwp')) text = await RubricImport.hwpText(buf);
+    else if (name.endsWith('.docx')) text = await docxText(buf);
+    else if (name.endsWith('.pptx')) text = await pptxText(buf);
+    else if (name.endsWith('.pdf')) text = await pdfText(buf);
+    else if (name.endsWith('.ipynb')) text = ipynbText(new TextDecoder('utf-8').decode(buf));
+    else if (/\.(py|txt|md|csv|json|js|java|c|cpp|html)$/.test(name)) text = new TextDecoder('utf-8').decode(buf);
+    else throw new Error('지원하지 않는 형식입니다 — hwpx, hwp, docx, pdf, pptx, py, txt를 올려 주세요');
+    if (!String(text).replace(/\s/g, '').length) throw new Error('파일에서 글자를 찾지 못했습니다(스캔 이미지일 수 있음)');
+    return '=== ' + file.name + ' ===\n' + text;
+  }
+
+  return { extractSubmission, pptxText, extractLocal };
 })();
