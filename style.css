@@ -292,3 +292,28 @@ label.inline input { width: 70px; font-size: 12.5px; padding: 5px 8px; }
 .list-tools .btn { padding: 3px 9px; font-size: 12px; }
 
 .student-row { user-select: none; }
+
+/* ---- 설정: 단순 채점기준 편집기(급간) ---- */
+.dropzone-compact { padding: 12px 14px; }
+.dropzone-compact .drop-title { margin-bottom: 0; font-size: 13.5px; }
+.band-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 12px; background: #fff; }
+.band-card-head { display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; font-weight: 700; margin-bottom: 8px; }
+.band-card-head .del { border: none; background: none; color: var(--muted); cursor: pointer; font-size: 14px; }
+.band-body { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 10px; align-items: stretch; }
+.band-name { width: 100%; height: 100%; min-height: 74px; resize: vertical; font-size: 13.5px; font-weight: 600; line-height: 1.5; }
+.band-rows { display: flex; flex-direction: column; gap: 6px; }
+.band-row { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 6px; }
+.band-row input[type="number"] { width: 100%; text-align: center; font-weight: 700; padding: 6px 4px; }
+.band-row textarea { width: 100%; resize: none; overflow: hidden; font-size: 13px; line-height: 1.5; padding: 6px 10px; min-height: 34px; }
+.band-row.band-base input[type="number"], .band-row.band-base textarea { background: #f9fafb; }
+.band-foot { display: flex; gap: 6px; margin-top: 8px; }
+details.fold > summary { cursor: pointer; font-size: 15px; font-weight: 700; list-style: none; display: flex; align-items: center; gap: 8px; }
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary::before { content: "▸"; color: var(--muted); font-size: 12px; transition: transform .15s ease; }
+details.fold[open] > summary::before { transform: rotate(90deg); }
+details.fold > summary .muted { font-weight: 400; }
+@media (max-width: 760px) { .band-body { grid-template-columns: 1fr; } }
+
+.score-chips { display: inline-flex; gap: 8px; margin-right: 10px; flex-wrap: wrap; }
+.score-chip { border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; background: #f9fafb; font-size: 13px; }
+.score-chip b { font-size: 15px; margin-left: 4px; }

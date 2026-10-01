@@ -545,8 +545,12 @@
     const bad = Grading.offStep(r);
     const src = r.source ? `<span class="muted"> · ${esc(r.source.fileName)}에서 ${r.source.via === 'ai' ? 'AI로 읽음' : '불러옴'}</span>` : '';
     $('#rubricSummary').innerHTML = `
-      제출자 점수 범위 <b>${Grading.rubricMin(r)} ~ ${Grading.rubricMax(r)}점</b>
-      (평가 영역 ${r.groups.length}개 · 체크 항목 ${r.groups.reduce((s, g) => s + g.checks.length, 0)}개)${src}
+      <span class="score-chips">
+        <span class="score-chip">만점 <b>${Grading.rubricMax(r)}</b></span>
+        <span class="score-chip">최소 점수 <b>${Grading.rubricMin(r)}</b></span>
+        <span class="score-chip">미제출 <b>0</b></span>
+      </span>
+      <span class="muted">채점기준 ${r.groups.length}개의 급간 점수를 더한 값입니다.</span>${src}
       ${bad.length ? `<div class="warn-line">⚠ 배점 간격(${r.step}점)에 맞지 않음: ${bad.map(esc).join(', ')}</div>` : ''}`;
     $('#rubricGroups').querySelectorAll('.rubric-group').forEach((el) => {
       const g = r.groups[Number(el.dataset.gi)];
@@ -574,8 +578,118 @@
 
   const AUTO_OPTS = Object.entries(Grading.AUTO_TYPES);
 
+  // ---------------- 단순 편집기: 채점기준 카드 + 급간(점수·설명) ----------------
+  // 화면에는 "급간별 점수"로 보여 주지만, 안에서는 가장 낮은 급간 = 영역 기본 점수,
+  // 그 위 급간 하나하나 = 체크 항목(배점 = 아래 급간과의 점수 차)으로 저장한다.
+  function bandScores(g) {
+    const out = [g.base || 0];
+    for (const c of g.checks) out.push(out[out.length - 1] + Number(c.points || 0));
+    return out; // [기본, 1단계, 2단계, ...]
+  }
+
+  function renderBandEditor() {
+    const r = state.rubric;
+    const wrap = $('#bandGroups');
+    if (!r.groups.length) {
+      wrap.innerHTML = '<p class="muted" style="margin:6px 0 10px">채점기준이 없습니다. 위에서 파일을 올리거나 아래 <b>+ 기준 추가</b>를 누르세요.</p>';
+      return;
+    }
+    wrap.innerHTML = r.groups
+      .map((g, gi) => {
+        const scores = bandScores(g);
+        // 위에서부터 높은 급간 순
+        const rows = [];
+        for (let i = g.checks.length - 1; i >= 0; i--) {
+          rows.push(`
+            <div class="band-row">
+              <input type="number" min="0" step="${r.step}" data-bscore="${i + 1}" value="${scores[i + 1]}" title="이 급간의 점수">
+              <textarea rows="1" data-blabel="${i}" placeholder="이 점수를 받는 기준">${esc(g.checks[i].label)}</textarea>
+            </div>`);
+        }
+        rows.push(`
+            <div class="band-row band-base">
+              <input type="number" min="0" step="${r.step}" data-bscore="0" value="${scores[0]}" title="가장 낮은 급간(제출하면 받는 점수)">
+              <textarea rows="1" data-blabel="base" placeholder="가장 낮은 급간의 기준(예: 제출했으나 위 기준에 미치지 못함)">${esc(g.baseLabel || '')}</textarea>
+            </div>`);
+        return `
+        <div class="band-card" data-gi="${gi}">
+          <div class="band-card-head">
+            <span>채점기준 ${gi + 1} <span class="muted">· ${scores[0]}~${scores[scores.length - 1]}점</span></span>
+            <button class="del" data-bdel title="이 채점기준 삭제">✕</button>
+          </div>
+          <div class="band-body">
+            <textarea class="band-name" data-bname rows="3" placeholder="채점기준 이름">${esc(g.name)}</textarea>
+            <div class="band-rows">${rows.join('')}</div>
+          </div>
+          <div class="band-foot">
+            <button class="btn ghost small" data-badd>+ 급간 추가</button>
+            <button class="btn ghost small" data-bremove>− 급간 제거</button>
+          </div>
+        </div>`;
+      })
+      .join('');
+
+    wrap.querySelectorAll('.band-card').forEach((card) => {
+      const gi = Number(card.dataset.gi);
+      const g = () => state.rubric.groups[gi];
+      const step = state.rubric.step;
+      card.querySelector('[data-bname]').addEventListener('change', (e) => { g().name = e.target.value.trim() || '채점기준 ' + (gi + 1); onRubricEdited(true); });
+      card.querySelectorAll('[data-blabel]').forEach((ta) => {
+        ta.addEventListener('change', () => {
+          if (ta.dataset.blabel === 'base') g().baseLabel = ta.value.trim();
+          else g().checks[Number(ta.dataset.blabel)].label = ta.value.trim() || '급간 기준';
+          onRubricEdited(true);
+        });
+      });
+      card.querySelectorAll('[data-bscore]').forEach((inp) => {
+        inp.addEventListener('change', () => {
+          // 화면의 급간 점수(아래에서 위로)를 읽어 기본 점수와 급간별 배점(점수 차)으로 되돌린다
+          const abs = [];
+          card.querySelectorAll('[data-bscore]').forEach((x) => { abs[Number(x.dataset.bscore)] = Grading.snap(x.value, step); });
+          g().base = abs[0];
+          let bad = false;
+          g().checks.forEach((c, i) => {
+            const diff = abs[i + 1] - abs[i];
+            if (diff <= 0) bad = true;
+            c.points = Math.max(0, diff);
+          });
+          if (bad) toast('급간 점수는 위로 갈수록 커야 합니다. 점수를 확인해 주세요.', 5000);
+          onRubricEdited(true);
+        });
+      });
+      card.querySelector('[data-badd]').addEventListener('click', () => {
+        const id = 'c_' + Date.now().toString(36);
+        if (g().base >= step) {
+          // 아래쪽에 더 낮은 급간을 추가: 지금의 최저 급간이 한 단계 위 체크 항목이 된다
+          g().checks.unshift({ id, label: g().baseLabel || '급간 기준', points: step, auto: { type: 'none', pattern: '' }, reason: '', scope: '' });
+          g().base -= step;
+          g().baseLabel = '';
+        } else {
+          g().checks.push({ id, label: '급간 기준', points: step, auto: { type: 'none', pattern: '' }, reason: '', scope: '' });
+        }
+        onRubricEdited(true);
+      });
+      card.querySelector('[data-bremove]').addEventListener('click', () => {
+        if (!g().checks.length) { toast('급간이 하나뿐이라 더 줄일 수 없습니다.'); return; }
+        // 가장 낮은 급간을 없앤다: 그 위 급간이 새 최저 급간(기본 점수)이 된다
+        const low = g().checks.shift();
+        g().base += Number(low.points || 0);
+        g().baseLabel = low.label;
+        onRubricEdited(true);
+      });
+      card.querySelector('[data-bdel]').addEventListener('click', () => {
+        if (!confirm('"' + g().name + '" 채점기준을 삭제할까요?')) return;
+        state.rubric.groups.splice(gi, 1);
+        onRubricEdited(true);
+      });
+    });
+    // 설명 칸 높이를 내용에 맞춤
+    wrap.querySelectorAll('textarea').forEach((ta) => { ta.style.height = 'auto'; ta.style.height = Math.max(34, ta.scrollHeight + 2) + 'px'; });
+  }
+
   function renderRubricEditor() {
     const r = state.rubric;
+    renderBandEditor();
     $('#rubricName').value = r.name;
     $('#rubricStep').value = r.step;
     $('#rubricBase').value = r.baseScore || 0;
@@ -1244,7 +1358,7 @@
         return `
         <div class="grade-group">
           <div class="grade-group-head"><span>${esc(g.name)}</span><span class="g-score">${absent ? 0 : Grading.groupScore(g, s.checks)} / ${Grading.groupMax(g)}점</span></div>
-          ${g.base ? `<div class="base-note">기본 ${g.base}점 포함</div>` : ''}
+          ${g.base ? `<div class="base-note">기본 ${g.base}점 포함${g.baseLabel ? ' — ' + esc(g.baseLabel) : ''}</div>` : ''}
           ${aiBlocked ? '<p class="flag-note">🤖 AI 작성 의심 — 자동 채점에서 이 영역은 모두 미체크(기본 점수만). 의심을 해제하면 다시 채점됩니다.</p>' : ''}
           ${!aiBlocked && blocked ? `<p class="flag-note">⚠ 필수 조건 미충족으로 자동 채점에서 모두 미체크 — ${esc(g.requires.message || '')}. 필요하면 직접 체크하세요.</p>` : ''}
           ${checksHtml || '<p class="muted" style="font-size:12px">체크 항목이 없습니다. ⚙ 설정에서 추가하세요.</p>'}

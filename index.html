@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>클래스룸 수행평가 채점 도우미</title>
-<link rel="stylesheet" href="style.css?v=202610011416">
+<link rel="stylesheet" href="style.css?v=202610011504">
 </head>
 <body>
   <header class="topbar">
@@ -94,22 +94,52 @@
         <h2>⚙ 설정 — 채점 기준</h2>
         <button class="btn primary small" id="settingsBackBtn">← 채점 화면으로</button>
       </div>
+
+      <!-- 1. 채점 기준: 파일로 불러오거나 직접 입력 -->
       <section class="panel">
-        <div class="panel-head"><h2>채점 기준 파일 올리기</h2></div>
-        <div id="rubricDrop" class="dropzone">
+        <div class="panel-head">
+          <h2>채점기준</h2>
+          <div><button id="regradeBtn" class="btn primary small">전체 자동 재채점</button></div>
+        </div>
+        <p class="hint" style="margin:0 0 10px">채점기준표 파일을 올리면 자동으로 채워지고, 아래에서 직접 고칠 수도 있습니다. 급간은 위에서부터 높은 점수 순서입니다.</p>
+        <div id="rubricDrop" class="dropzone dropzone-compact">
           <input type="file" id="rubricFileInput" class="hidden">
-          <div class="drop-title">여기에 채점기준표 파일을 끌어다 놓거나 클릭해서 고르세요</div>
-          <div class="muted">PDF · 한글(hwp, hwpx) · 워드 · 파워포인트 · 엑셀/CSV · 사진·캡처 이미지 등 어떤 파일이든 됩니다.
-            캡처한 이미지는 이 화면에서 <b>Ctrl+V</b>로 바로 붙여넣어도 됩니다.<br>
-            올리면 자동으로 읽어 체크리스트로 바꾸고 <b>바로 적용</b>합니다(확인 완료하지 않은 학생은 자동 재채점).</div>
+          <div class="drop-title">📎 채점기준표 파일 올리기</div>
+          <div class="muted">끌어다 놓기 · 클릭해서 고르기 · 캡처 이미지는 Ctrl+V (PDF, 한글, 워드, 엑셀, 이미지 등)</div>
         </div>
         <div id="importStatus" class="import-status"></div>
         <div id="importNotes" class="note-banner hidden"></div>
+
+        <div class="row rubric-meta" style="margin:14px 0 10px">
+          <label>기준 이름 <input type="text" id="rubricName" style="min-width:360px"></label>
+        </div>
+        <div id="bandGroups"></div>
+        <button id="addRubricGroupBtn" class="btn ghost small">+ 기준 추가</button>
+
+        <h3 class="sub-h">점수 산출</h3>
+        <div id="rubricSummary" class="rubric-summary"></div>
       </section>
 
-      <section class="panel" id="refDocsPanel">
-        <div class="panel-head"><h2>기준 검증용 문서</h2></div>
-        <p class="hint" style="margin:0 0 10px">학생이 받은 <b>빈 양식</b>과 <b>100점 학생 샘플</b>을 올리면, 각 채점 항목을 두 문서에 미리 돌려 봐서
+      <!-- 2. 필요할 때만 여는 항목들 -->
+      <details class="panel fold">
+        <summary>자동 채점 규칙 · 배점 간격 <span class="muted">(고급: 키워드·정규식, AI 작성 의심 신호)</span></summary>
+        <div class="row rubric-meta" style="margin-top:12px">
+          <label>배점 간격 <input type="number" id="rubricStep" min="1" step="1" style="width:80px"></label>
+          <label>합계 최저점(선택) <input type="number" id="rubricBase" min="0" step="5" style="width:90px"></label>
+        </div>
+        <div id="rubricGroups" style="margin-top:10px"></div>
+        <p class="hint">
+          각 급간이 자동으로 체크되는 조건을 정합니다. "자동 감지"에 키워드나 정규식을 넣으면 제출물 텍스트를 보고 미리 체크하고,
+          "직접 확인"이면 선생님이 체크하거나 AI 채점(Gemini·Claude)이 판단합니다. 규칙을 고친 뒤에는 <b>전체 자동 재채점</b>을 눌러 주세요.
+        </p>
+        <h3 class="sub-h">AI 작성 의심 신호 <span class="muted">(하나라도 걸리면 그 학생을 🤖 AI 의심으로 자동 표시 — 채점 화면에서 학생마다 체크/해제 가능)</span></h3>
+        <div id="flagRows"></div>
+        <button id="addFlagBtn" class="btn ghost small">+ 의심 신호 추가</button>
+      </details>
+
+      <details class="panel fold" id="refDocsPanel">
+        <summary>기준 검증용 문서 <span class="muted">(빈 양식 · 100점 학생 샘플)</span></summary>
+        <p class="hint" style="margin:12px 0 10px">학생이 받은 <b>빈 양식</b>과 <b>100점 학생 샘플</b>을 올리면, 각 채점 항목을 두 문서에 미리 돌려 봐서
           규칙이 양식과 맞는지 확인해 줍니다. 빈 양식에 원래 인쇄된 문구는 채점할 때 "학생이 쓴 내용"에서 빠집니다.
           <b>학생이 제출한 것과 같은 형식</b>(구글 문서면 구글 문서를 docx로 받지 말고 PDF·hwpx 등 같은 형식)으로 올리는 것이 가장 정확합니다.</p>
         <div class="ref-grid">
@@ -133,11 +163,11 @@
           </div>
         </div>
         <div id="refResult"></div>
-      </section>
+      </details>
 
-      <section class="panel">
-        <div class="panel-head"><h2>기준 보관함</h2></div>
-        <div class="row">
+      <details class="panel fold">
+        <summary>기준 보관함 · 내보내기</summary>
+        <div class="row" style="margin-top:12px">
           <select id="librarySelect"></select>
           <button id="libraryApplyBtn" class="btn primary small">이 기준 적용</button>
           <button id="librarySaveBtn" class="btn ghost small">현재 기준을 보관함에 저장</button>
@@ -148,37 +178,11 @@
         </div>
         <p class="hint">보관함에 저장한 기준은 다른 과목·과제에서도 골라 쓸 수 있습니다. 같은 수업의 새 과제를 열면 그 수업에서 마지막으로 쓴 기준으로 시작합니다.
           "엑셀로 받기"한 파일을 고쳐서 다시 올리면 AI 없이 그대로 적용됩니다.</p>
-      </section>
+      </details>
 
-      <section class="panel">
-        <div class="panel-head">
-          <h2>현재 채점 기준</h2>
-          <div>
-            <button id="addRubricGroupBtn" class="btn ghost small">+ 평가 영역 추가</button>
-            <button id="regradeBtn" class="btn primary small">전체 자동 재채점</button>
-          </div>
-        </div>
-        <div class="row rubric-meta">
-          <label>기준 이름 <input type="text" id="rubricName" style="min-width:320px"></label>
-          <label>배점 간격 <input type="number" id="rubricStep" min="1" step="1" style="width:80px"></label>
-          <label>합계 최저점(선택) <input type="number" id="rubricBase" min="0" step="5" style="width:90px"></label>
-        </div>
-        <div id="rubricSummary" class="rubric-summary"></div>
-        <div id="rubricGroups"></div>
-        <p class="hint">
-          평가 영역 점수 = <b>기본 점수</b>(그 영역의 최저 수준) + <b>체크한 항목의 배점</b>. 예) 기본 20 + 5점 체크 4개 → 20/25/30/35/40점.
-          "자동 감지"에 키워드나 정규식을 넣으면 제출물 텍스트를 보고 미리 체크해 두고, 체크되지 않은 항목에는 "미충족 시 근거"가 채점 화면에 표시됩니다.
-          키워드·정규식을 고친 뒤에는 <b>전체 자동 재채점</b>을 눌러 주세요. 최종 판단은 선생님이 해 주세요.
-        </p>
-
-        <h3 class="sub-h">AI 작성 의심 신호 <span class="muted">(하나라도 걸리면 그 학생을 🤖 AI 의심으로 자동 표시 — 채점 화면에서 학생마다 체크/해제 가능. 점수는 위에서 "AI 작성 의심 학생은 …"을 켠 영역에만 반영)</span></h3>
-        <div id="flagRows"></div>
-        <button id="addFlagBtn" class="btn ghost small">+ 의심 신호 추가</button>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head"><h2>AI 설정 (채점 기준 파일 읽기용)</h2></div>
-        <div class="row">
+      <details class="panel fold">
+        <summary>AI 설정 <span class="muted">(Gemini · Claude API 키)</span></summary>
+        <div class="row" style="margin-top:12px">
           <label>Gemini API 키
             <input type="password" id="geminiKeyInput" style="min-width:340px" autocomplete="off" placeholder="AIza…">
           </label>
@@ -187,11 +191,7 @@
         <p class="hint">PDF·한글·이미지 등 표 형식이 아닌 채점기준표는 구글 Gemini가 읽어서 체크리스트로 바꿉니다.
           키는 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>에서 무료로 만들 수 있고,
           <b>이 브라우저에만 저장</b>됩니다(서버·저장소로 보내지 않음). 엑셀/CSV/JSON 기준 파일은 키 없이도 됩니다.</p>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head"><h2>AI 채점 (Claude)</h2></div>
-        <div class="row">
+        <div class="row" style="margin-top:14px">
           <label>Claude API 키
             <input type="password" id="claudeKeyInput" style="min-width:340px" autocomplete="off" placeholder="sk-ant-…">
           </label>
@@ -205,7 +205,7 @@
           채점 화면의 <b>"🤖 Claude로 채점"</b> 버튼을 누르세요(전체 학생 일괄 채점도 가능). 실제 API 요금이 청구되니
           <b>확인 완료된 학생에게는 자동으로 실행되지 않습니다.</b> 키는 <a href="https://console.claude.com/settings/keys" target="_blank" rel="noopener">Anthropic Console</a>에서
           만들 수 있고, <b>이 브라우저에만 저장</b>됩니다.</p>
-      </section>
+      </details>
     </div>
   </main>
 
@@ -240,16 +240,16 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
   </script>
 
-  <script src="js/config.js?v=202610011416"></script>
-  <script src="js/auth.js?v=202610011416"></script>
-  <script src="js/api.js?v=202610011416"></script>
-  <script src="js/extract.js?v=202610011416"></script>
-  <script src="js/grading.js?v=202610011416"></script>
-  <script src="js/similarity.js?v=202610011416"></script>
-  <script src="js/gemini.js?v=202610011416"></script>
-  <script src="js/claude.js?v=202610011416"></script>
-  <script src="js/rubric-import.js?v=202610011416"></script>
-  <script src="js/store.js?v=202610011416"></script>
-  <script src="js/app.js?v=202610011416"></script>
+  <script src="js/config.js?v=202610011504"></script>
+  <script src="js/auth.js?v=202610011504"></script>
+  <script src="js/api.js?v=202610011504"></script>
+  <script src="js/extract.js?v=202610011504"></script>
+  <script src="js/grading.js?v=202610011504"></script>
+  <script src="js/similarity.js?v=202610011504"></script>
+  <script src="js/gemini.js?v=202610011504"></script>
+  <script src="js/claude.js?v=202610011504"></script>
+  <script src="js/rubric-import.js?v=202610011504"></script>
+  <script src="js/store.js?v=202610011504"></script>
+  <script src="js/app.js?v=202610011504"></script>
 </body>
 </html>

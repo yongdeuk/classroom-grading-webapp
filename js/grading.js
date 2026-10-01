@@ -281,7 +281,7 @@ const Grading = (() => {
         });
         return { id: cid, label, points: snap(c.points, r.step), auto, reason: String(c.reason || ''), scope };
       });
-      return { id: gid, name, base: snap(g.base, r.step), requires, aiBlock, checks };
+      return { id: gid, name, base: snap(g.base, r.step), baseLabel: String(g.baseLabel || ''), requires, aiBlock, checks };
     });
     if (r.groups.some((g) => g.aiBlock) && !(r.flags || []).some((f) => f && f.pattern === CLASS_RE) && Array.isArray(raw)) {
       r.flags = [{ type: 'missing', pattern: CLASS_RE, message: 'class 없이 구현됨' }];
