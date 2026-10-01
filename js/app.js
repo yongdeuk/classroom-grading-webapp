@@ -716,18 +716,49 @@
     const list = targets.filter((s) => s.status !== '미제출' && s.text);
     if (!list.length) { toast(ai.name + '로 채점할 학생이 없습니다(제출물이 없거나 비어 있음).'); return; }
     if (!confirm(list.length + '명을 ' + ai.name + '(' + ai.api().getModel() + ')로 채점합니다. API 사용량(요금 또는 무료 한도)이 차감됩니다. 계속할까요?')) return;
-    if (btn) btn.disabled = true;
-    let done = 0, failed = 0, lastError = '';
+    if (btn) { btn.disabled = true; btn.textContent = ai.name + ' 채점 중 (0/' + list.length + ')…'; }
+    let done = 0, failed = 0, lastError = '', stopped = false, waitNote = '';
+    const working = new Set();
+    const t0 = Date.now();
+    // 진행 상황 막대: 시작하자마자 보이고, 지금 누구를 채점 중인지·몇 명 끝났는지·걸린 시간을 계속 갱신
+    const show = () => {
+      const pct = Math.round((done / list.length) * 100);
+      $('#aiProgress').classList.remove('hidden');
+      $('#aiProgressTitle').textContent = ai.icon + ' ' + ai.name + ' 채점 중 ' + done + ' / ' + list.length + '명 (' + pct + '%)';
+      $('#aiProgressBar').style.width = Math.max(pct, 3) + '%';
+      const sec = Math.round((Date.now() - t0) / 1000);
+      $('#aiProgressText').textContent =
+        (working.size ? '지금: ' + Array.from(working).join(', ') + ' · ' : '') + sec + '초 경과' +
+        (failed ? ' · 실패 ' + failed + '명' : '') + (waitNote ? ' · ' + waitNote : '') + (stopped ? ' · 중지하는 중(진행 중인 학생까지만)' : '');
+    };
+    const ticker = setInterval(show, 1000);
+    $('#aiProgressStop').textContent = '중지';
+    $('#aiProgressStop').onclick = () => { stopped = true; show(); };
+    if (provider === 'gemini') Gemini.setWaitListener((wait, status) => { waitNote = (status === 429 ? '요청 한도 초과' : '서버 오류 ' + status) + ' — ' + wait + '초 기다렸다 다시 시도'; show(); });
+    show();
     await runWithConcurrency(list, ai.concurrency, async (s) => {
-      try { await gradeStudentWithAI(s, provider); } catch (e) { failed++; lastError = e.message; console.error(s.name, e); }
+      if (stopped) return;
+      working.add(s.name); show();
+      try { await gradeStudentWithAI(s, provider); waitNote = ''; } catch (e) { failed++; lastError = e.message; console.error(s.name, e); }
+      working.delete(s.name);
       done++;
       if (btn) btn.textContent = ai.name + ' 채점 중 (' + done + '/' + list.length + ')…';
+      show();
       renderStudentList();
       if (state.selectedUserId === s.userId) renderGradingPanel(s);
+      persist();
     });
+    clearInterval(ticker);
+    if (provider === 'gemini') Gemini.setWaitListener(null);
     if (btn) { btn.disabled = false; btn.textContent = idleLabel; }
     persist();
-    toast(ai.name + ' 채점 완료: ' + (done - failed) + '명 성공' + (failed ? ', ' + failed + '명 실패 (' + lastError + ')' : ''), 8000);
+    const summary = ai.name + ' 채점 ' + (stopped ? '중지' : '완료') + ': ' + (done - failed) + '명 성공' + (failed ? ', ' + failed + '명 실패 (' + lastError + ')' : '') + (stopped ? ', ' + (list.length - done) + '명 남음' : '');
+    $('#aiProgressTitle').textContent = (failed ? '⚠ ' : '✅ ') + summary;
+    $('#aiProgressText').textContent = Math.round((Date.now() - t0) / 1000) + '초 걸림';
+    $('#aiProgressBar').style.width = '100%';
+    $('#aiProgressStop').textContent = '닫기';
+    $('#aiProgressStop').onclick = () => { $('#aiProgress').classList.add('hidden'); $('#aiProgressStop').textContent = '중지'; };
+    toast(summary, 8000);
   }
 
   $('#geminiGradeAllBtn').addEventListener('click', () => {
@@ -1308,15 +1339,21 @@
     if (ggBtn) ggBtn.addEventListener('click', async () => {
       if (!Gemini.getKey()) { toast(AI.gemini.keyMsg, 5000); return; }
       ggBtn.disabled = true;
-      ggBtn.textContent = '채점 중…';
+      const t0 = Date.now();
+      const tick = () => { ggBtn.textContent = 'Gemini가 읽는 중… ' + Math.round((Date.now() - t0) / 1000) + '초'; };
+      tick();
+      const timer = setInterval(tick, 1000);
+      toast('Gemini가 제출물을 읽고 있습니다. 보통 10~60초 걸립니다.', 5000);
       try {
         await gradeStudentWithAI(s, 'gemini');
         persist();
         renderStudentList();
         renderGradingPanel(s);
+        clearInterval(timer);
         toast('Gemini 채점 완료');
       } catch (e) {
-        toast('Gemini 채점 실패: ' + e.message, 6000);
+        clearInterval(timer);
+        toast('Gemini 채점 실패: ' + e.message, 8000);
         ggBtn.disabled = false;
         ggBtn.textContent = '✨ Gemini로 채점';
       }
@@ -1324,15 +1361,21 @@
     const cgBtn = el.querySelector('#claudeGradeBtn');
     if (cgBtn) cgBtn.addEventListener('click', async () => {
       cgBtn.disabled = true;
-      cgBtn.textContent = '채점 중…';
+      const t0 = Date.now();
+      const tick = () => { cgBtn.textContent = 'Claude가 읽는 중… ' + Math.round((Date.now() - t0) / 1000) + '초'; };
+      tick();
+      const timer = setInterval(tick, 1000);
+      toast('Claude가 제출물을 읽고 있습니다. 보통 10~60초 걸립니다.', 5000);
       try {
         await gradeStudentWithClaude(s);
         persist();
         renderStudentList();
         renderGradingPanel(s);
+        clearInterval(timer);
         toast('Claude 채점 완료');
       } catch (e) {
-        toast('Claude 채점 실패: ' + e.message, 6000);
+        clearInterval(timer);
+        toast('Claude 채점 실패: ' + e.message, 8000);
         cgBtn.disabled = false;
         cgBtn.textContent = '🤖 Claude로 채점';
       }

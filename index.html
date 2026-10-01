@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>클래스룸 수행평가 채점 도우미</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-<link rel="stylesheet" href="style.css?v=202610011357">
+<link rel="stylesheet" href="style.css?v=202610011359">
 </head>
 <body>
   <header class="topbar">
@@ -67,6 +67,14 @@
         </div>
         <p class="hint" style="margin:6px 0 12px">채점 내용은 체크·수정할 때마다 이 브라우저에 자동 저장됩니다. 다른 컴퓨터로 옮기거나
           만약을 위해 따로 보관하려면 <b>채점 결과 저장</b>으로 파일을 받아 두고, 나중에 <b>채점 결과 불러오기</b>로 이어서 채점하세요.</p>
+        <div id="aiProgress" class="ai-progress hidden">
+          <div class="ai-progress-top">
+            <b id="aiProgressTitle"></b>
+            <span id="aiProgressText" class="muted"></span>
+            <button id="aiProgressStop" class="btn ghost small">중지</button>
+          </div>
+          <div class="ai-progress-track"><div id="aiProgressBar" class="ai-progress-bar"></div></div>
+        </div>
         <div id="similarityPanel" class="similarity-panel hidden"></div>
         <div class="split3" id="split3">
           <div class="student-list" id="studentList"></div>
@@ -232,16 +240,16 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
   </script>
 
-  <script src="js/config.js?v=202610011357"></script>
-  <script src="js/auth.js?v=202610011357"></script>
-  <script src="js/api.js?v=202610011357"></script>
-  <script src="js/extract.js?v=202610011357"></script>
-  <script src="js/grading.js?v=202610011357"></script>
-  <script src="js/similarity.js?v=202610011357"></script>
-  <script src="js/gemini.js?v=202610011357"></script>
-  <script src="js/claude.js?v=202610011357"></script>
-  <script src="js/rubric-import.js?v=202610011357"></script>
-  <script src="js/store.js?v=202610011357"></script>
-  <script src="js/app.js?v=202610011357"></script>
+  <script src="js/config.js?v=202610011359"></script>
+  <script src="js/auth.js?v=202610011359"></script>
+  <script src="js/api.js?v=202610011359"></script>
+  <script src="js/extract.js?v=202610011359"></script>
+  <script src="js/grading.js?v=202610011359"></script>
+  <script src="js/similarity.js?v=202610011359"></script>
+  <script src="js/gemini.js?v=202610011359"></script>
+  <script src="js/claude.js?v=202610011359"></script>
+  <script src="js/rubric-import.js?v=202610011359"></script>
+  <script src="js/store.js?v=202610011359"></script>
+  <script src="js/app.js?v=202610011359"></script>
 </body>
 </html>

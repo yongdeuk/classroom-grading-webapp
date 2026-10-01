@@ -610,3 +610,12 @@ body { background: linear-gradient(180deg, #e8eefc 0%, #f3f5fb 240px) fixed, var
 /* 알림 */
 .toast { background: var(--navy); }
 .step-btns .btn { color: var(--primary-dark); border-color: #9db5f7; background: #f3f6ff; }
+
+/* AI 채점 진행 상황 */
+.ai-progress { border: 1px solid #b6a3f5; background: #f5f1ff; border-radius: 12px; padding: 10px 14px; margin-bottom: 10px; }
+.ai-progress-top { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.ai-progress-top b { font-size: 14px; color: #3a1f96; }
+.ai-progress-top .muted { flex: 1; font-size: 12.5px; }
+.ai-progress-track { height: 10px; border-radius: 999px; background: #e2d9ff; overflow: hidden; }
+.ai-progress-bar { height: 100%; width: 3%; border-radius: 999px; background: linear-gradient(90deg, #6a4df0, #2f5bea); transition: width .4s ease; }
+@media (prefers-reduced-motion: reduce) { .ai-progress-bar { transition: none; } }

@@ -9,12 +9,26 @@ const Gemini = (() => {
   function setKey(k) { try { k ? localStorage.setItem(KEY_STORE, k.trim()) : localStorage.removeItem(KEY_STORE); } catch (e) {} }
   function getModel() { try { return localStorage.getItem(MODEL_STORE) || CONFIG.GEMINI_MODEL; } catch (e) { return CONFIG.GEMINI_MODEL; } }
 
+  // 응답이 없으면 2분 뒤 끊는다(멈춘 것처럼 보이지 않게)
+  const TIMEOUT_MS = 120000;
+  let onWait = null; // 한도 초과로 기다리는 동안 화면에 알릴 때 쓰는 콜백
+  function setWaitListener(fn) { onWait = fn; }
   async function call(model, body) {
-    return fetch(BASE + '/models/' + model + ':generateContent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getKey() },
-      body: JSON.stringify(body),
-    });
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    try {
+      return await fetch(BASE + '/models/' + model + ':generateContent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getKey() },
+        body: JSON.stringify(body),
+        signal: ctrl.signal,
+      });
+    } catch (e) {
+      if (e.name === 'AbortError') throw new Error('Gemini 응답 시간 초과(2분) — 잠시 뒤 다시 시도해 주세요');
+      throw new Error('Gemini에 연결하지 못했습니다(네트워크): ' + e.message);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   // 모델 이름은 구글 쪽에서 종종 바뀐다. 404가 나면 이 키로 쓸 수 있는 flash 모델을 찾아 재시도.
@@ -52,8 +66,11 @@ const Gemini = (() => {
         res = await call(model, body);
       }
     }
-    if (res.status === 429 || res.status >= 500) {
-      await new Promise((r) => setTimeout(r, 2000));
+    // 429(분당 요청 한도)·5xx는 기다렸다 다시: 10초 → 25초 → 45초
+    for (const wait of [10, 25, 45]) {
+      if (!(res.status === 429 || res.status >= 500)) break;
+      if (onWait) onWait(wait, res.status);
+      await new Promise((r) => setTimeout(r, wait * 1000));
       res = await call(model, body);
     }
     if (!res.ok) throw new Error('Gemini 호출 실패: ' + (await errorMessage(res)));
@@ -79,5 +96,5 @@ const Gemini = (() => {
     return out;
   }
 
-  return { getKey, setKey, getModel, generateJson, gradeSubmission };
+  return { getKey, setKey, getModel, generateJson, gradeSubmission, setWaitListener };
 })();
