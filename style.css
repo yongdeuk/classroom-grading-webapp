@@ -441,3 +441,68 @@ select:hover, input[type="text"]:hover, input[type="number"]:hover, textarea:hov
 
 /* 설정 화면은 읽기 편한 폭으로(채점 화면은 창 전체 사용) */
 #tabRubric { max-width: 1180px; width: 100%; margin: 0 auto; }
+
+/* ---- 가독성 보강: 글자를 더 진하고 또렷하게 ---- */
+:root {
+  --text: #0a0a0b;
+  --muted: #3f3f46;          /* 보조 글자도 충분히 진하게(흰 바탕 대비 10:1 이상) */
+  --border: #d4d4d8;
+  --border-strong: #a1a1aa;
+}
+body { font-weight: 500; color: var(--text); letter-spacing: -0.005em; -webkit-font-smoothing: auto; }
+b, strong, h1, h2, h3 { font-weight: 700; }
+.muted, .hint { color: var(--muted); font-size: 13px; }
+.hint { line-height: 1.65; }
+.topbar h1, .panel-head h2, .settings-head h2, .work-title, .detail-head h3, .grading-head h3 { font-weight: 700; color: var(--text); }
+.btn { font-weight: 600; color: var(--text); border-color: var(--border-strong); }
+.btn.small { font-size: 12.5px; }
+.btn.primary { color: #fff; }
+select, input[type="text"], input[type="number"], input[type="password"], textarea { color: var(--text); font-weight: 500; }
+::placeholder { color: #71717a; opacity: 1; }
+.row label { color: var(--text); font-weight: 600; }
+
+/* 학생 목록 */
+.list-count { color: var(--text); font-size: 13px; }
+.student-row .name { font-weight: 650; font-size: 13.5px; color: var(--text); }
+.student-row.absent, .student-row.absent .name { color: #52525b; }
+.student-row .status { color: #27272a; font-weight: 600; font-size: 11.5px; background: #e4e4e7; }
+.student-row .status.late { color: #92400e; background: #fde68a; }
+.student-row .status.absent { color: #3f3f46; background: #e4e4e7; }
+.student-row .total { font-weight: 700; font-size: 14px; color: var(--text); }
+.stuno { color: #3f3f46; }
+.student-row .row-del { opacity: .75; color: #52525b; }
+
+/* 채점 패널 */
+.grade-group-head { font-size: 14px; font-weight: 700; }
+.check-item, .check-line { font-size: 13.5px; }
+.check-line .c-label, .check-item .c-label { color: var(--text); font-weight: 550; line-height: 1.5; }
+.check-line .c-points, .check-item .c-points { color: var(--text); font-weight: 650; font-size: 12.5px; }
+.evidence { color: #166534; font-size: 12.5px; font-weight: 500; }
+.base-note { color: var(--muted); font-size: 12.5px; }
+.reason-head { font-size: 12px; font-weight: 700; color: #b91c1c; }
+.reason-box textarea { font-size: 13px; color: var(--text); border-color: #d6a3a3; }
+.comment-box .reason-head { color: #92400e; }
+.flag-note { font-size: 12.5px; font-weight: 600; }
+.teacher-bar .muted, .ai-box .ai-signals { font-size: 12.5px; color: var(--muted); }
+.link-btn { color: #27272a; font-size: 12px; }
+.ai-mark { opacity: .7; }
+.total-line { font-weight: 700; }
+
+/* 가운데 */
+.file-chip { font-size: 12.5px; color: var(--text); font-weight: 550; }
+.file-chip a { color: var(--primary-dark); font-weight: 600; }
+.file-chip button { color: #27272a; font-weight: 550; }
+.frame-hint { font-size: 12.5px; }
+.doc-body { color: var(--text); font-size: 13.5px; }
+.cr-grade { font-weight: 650; color: #065f46; }
+.cr-diff { color: #9a3412; font-weight: 700; }
+
+/* 설정 화면 */
+.check-row input, .check-row select, .requires-row input, .flag-row input, .flag-row select { font-size: 13px; color: var(--text); }
+.check-row-head { font-size: 12px; color: var(--text); font-weight: 650; }
+.requires-row, .aiblock-opt, label.inline, .rubric-group-head .group-max { color: var(--muted); font-size: 12.5px; font-weight: 550; }
+.rubric-summary { font-size: 13.5px; }
+.ref-status, .import-status { font-size: 13px; color: var(--text); }
+.ref-table { font-size: 13px; }
+.ref-table th { color: var(--text); font-weight: 700; }
+.dropzone .muted { color: var(--muted); }
