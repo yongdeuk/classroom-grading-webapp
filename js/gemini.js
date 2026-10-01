@@ -65,5 +65,19 @@ const Gemini = (() => {
     return JSON.parse(cleaned);
   }
 
-  return { getKey, setKey, getModel, generateJson };
+  // 제출물을 Gemini가 읽고 체크리스트를 판단한다(Claude 채점과 같은 지시문·같은 결과 형식).
+  // 반환: { checks: { [checkId]: { met, reason } }, aiSuspect, aiSuspectReason }
+  async function gradeSubmission(rubric, text) {
+    const ids = rubric.groups.flatMap((g) => g.checks.map((c) => c.id));
+    const format = [
+      '',
+      '[출력 형식] 아래 모양의 JSON 하나만 출력하세요. checks에는 위 체크리스트의 대괄호 안 id를 빠짐없이 모두 넣습니다.',
+      '{"checks": {' + ids.map((id) => '"' + id + '": {"met": true 또는 false, "reason": "한 문장"}').join(', ') + '}, "aiSuspect": true 또는 false, "aiSuspectReason": "문자열"}',
+    ].join('\n');
+    const out = await generateJson([{ text: Claude.buildPrompt(rubric, text) + format }]);
+    if (!out || typeof out.checks !== 'object') throw new Error('Gemini 응답 형식이 올바르지 않습니다');
+    return out;
+  }
+
+  return { getKey, setKey, getModel, generateJson, gradeSubmission };
 })();

@@ -106,5 +106,5 @@ const Claude = (() => {
     return JSON.parse(textBlock.text);
   }
 
-  return { getKey, setKey, getModel, setModel, MODELS, DEFAULT_MODEL, gradeSubmission };
+  return { getKey, setKey, getModel, setModel, MODELS, DEFAULT_MODEL, gradeSubmission, buildPrompt };
 })();

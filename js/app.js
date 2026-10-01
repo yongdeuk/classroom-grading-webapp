@@ -24,6 +24,7 @@
     selectedUserId: null,
     checkedIds: new Set(), // 왼쪽 목록에서 체크해 둔(일괄 Claude 채점 대상) 학생의 userId
     viewIdx: {}, // 학생별로 가운데에 보고 있는 파일 번호
+    listCollapsed: (() => { try { return localStorage.getItem('grader:listCollapsed') === '1'; } catch (e) { return false; } })(),
     showScores: (() => { try { return localStorage.getItem('grader:showScores') !== '0'; } catch (e) { return true; } })(),
   };
 
@@ -61,7 +62,7 @@
       students[s.userId] = {
         sig: s.sig, text: s.text, extractStatus: s.extractStatus,
         checks: s.checks, confirmed: s.confirmed, note: s.note, reasonEdits: s.reasonEdits, comments: s.comments, blank: s.blank, aiSuspect: s.aiSuspect,
-        aiEvidence: s.aiEvidence, gradedByAI: s.gradedByAI, gradedByAIAt: s.gradedByAIAt, feedbackPosted: s.feedbackPosted,
+        aiEvidence: s.aiEvidence, gradedByAI: s.gradedByAI, gradedBy: s.gradedBy, gradedByAIAt: s.gradedByAIAt, feedbackPosted: s.feedbackPosted,
         teacherChecks: s.teacherChecks, teacherSavedAt: s.teacherSavedAt,
       };
     }
@@ -90,6 +91,30 @@
   $('#settingsTabBtn').addEventListener('click', () => showTab(state.tab === 'rubric' ? 'grade' : 'rubric'));
   $('#settingsBackBtn').addEventListener('click', () => showTab('grade'));
   // 점수 보이기/숨기기(버튼, 브라우저에 기억)
+  // 학생 목록 접기/펴기(브라우저에 기억). 접으면 제출 자료와 평가 항목만 크게 보인다.
+  function applyListCollapsed() {
+    $('#split3').classList.toggle('list-collapsed', !!state.listCollapsed);
+    $('#listToggleBtn').textContent = state.listCollapsed ? '목록 펴기' : '목록 접기';
+  }
+  $('#listToggleBtn').addEventListener('click', () => {
+    state.listCollapsed = !state.listCollapsed;
+    try { localStorage.setItem('grader:listCollapsed', state.listCollapsed ? '1' : '0'); } catch (err) {}
+    applyListCollapsed();
+  });
+  // 목록을 접었을 때도 학생을 넘길 수 있게: 화면에 보이는(삭제하지 않은) 학생 순서대로 이전/다음
+  function stepStudent(delta) {
+    const visible = state.students.filter((s) => !state.hidden.has(s.userId));
+    if (!visible.length) return;
+    const i = visible.findIndex((s) => s.userId === state.selectedUserId);
+    const next = visible[Math.min(visible.length - 1, Math.max(0, (i < 0 ? 0 : i + delta)))];
+    if (!next || next.userId === state.selectedUserId) return;
+    state.selectedUserId = next.userId;
+    renderStudentList();
+    renderDocViewer(next);
+    renderGradingPanel(next);
+    const row = $('#studentList').querySelector('.student-row.selected');
+    if (row) row.scrollIntoView({ block: 'nearest' });
+  }
   function updateScoreToggle() { $('#scoreToggleBtn').textContent = state.showScores ? '점수 숨기기' : '점수 보기'; }
   $('#scoreToggleBtn').addEventListener('click', () => {
     state.showScores = !state.showScores;
@@ -283,6 +308,7 @@
             aiSuspect: sigMatch && prev.aiSuspect != null ? prev.aiSuspect : null,
             aiEvidence: sigMatch ? prev.aiEvidence || {} : {},
             gradedByAI: sigMatch ? !!prev.gradedByAI : false,
+            gradedBy: sigMatch ? prev.gradedBy || 'Claude' : '',
             feedbackPosted: prev.feedbackPosted || null,
             // 선생님 수정은 같은 제출물일 때만 유지(재제출하면 새로 채점)
             teacherChecks: sigMatch ? prev.teacherChecks || {} : {},
@@ -418,9 +444,15 @@
   }
 
   // Claude가 제출물을 직접 읽고 체크리스트를 판단한다(키워드/정규식보다 정확).
-  async function gradeStudentWithClaude(s) {
+  const AI = {
+    claude: { name: 'Claude', icon: '🤖', api: () => Claude, keyMsg: '먼저 ⚙ 설정에서 Claude API 키를 입력해 주세요.', concurrency: 3 },
+    gemini: { name: 'Gemini', icon: '✨', api: () => Gemini, keyMsg: '먼저 ⚙ 설정에서 Gemini API 키를 입력해 주세요.', concurrency: 2 },
+  };
+  async function gradeStudentWithClaude(s) { return gradeStudentWithAI(s, 'claude'); }
+  async function gradeStudentWithAI(s, provider) {
+    const ai = AI[provider];
     if (!s.text) throw new Error('추출된 텍스트가 없습니다. "다시 추출"을 먼저 눌러 주세요.');
-    const result = await Claude.gradeSubmission(state.rubric, s.text);
+    const result = await ai.api().gradeSubmission(state.rubric, s.text);
     s.checks = s.checks || {};
     s.aiEvidence = {};
     for (const g of state.rubric.groups) {
@@ -432,11 +464,12 @@
       }
     }
     if (s.aiSuspect == null) {
-      s.flags = result.aiSuspect ? [String(result.aiSuspectReason || 'Claude가 AI 작성 의심 신호를 감지함')] : [];
+      s.flags = result.aiSuspect ? [String(result.aiSuspectReason || ai.name + '가 AI 작성 의심 신호를 감지함')] : [];
     }
     enforceCheckAiSuspect(s);
     applyTeacherChecks(s);
     s.gradedByAI = true;
+    s.gradedBy = ai.name;
     s.gradedByAIAt = Date.now();
   }
 
@@ -676,24 +709,34 @@
   $('#regradeBtn2').addEventListener('click', regradeClick);
   // targets 학생들을 Claude로 일괄 채점한다. btn이 있으면 진행 상황을 그 버튼 글자에 표시하고,
   // 끝나면 idleLabel로 되돌린다(선택 학생용 버튼은 매번 개수가 바뀌므로 호출부에서 직접 넘겨줌).
-  async function runClaudeGradeBulk(targets, btn, idleLabel) {
-    if (!Claude.getKey()) { toast('먼저 ⚙ 설정에서 Claude API 키를 입력해 주세요.', 5000); return; }
+  function runClaudeGradeBulk(targets, btn, idleLabel) { return runAiGradeBulk('claude', targets, btn, idleLabel); }
+  async function runAiGradeBulk(provider, targets, btn, idleLabel) {
+    const ai = AI[provider];
+    if (!ai.api().getKey()) { toast(ai.keyMsg, 5000); return; }
     const list = targets.filter((s) => s.status !== '미제출' && s.text);
-    if (!list.length) { toast('Claude로 채점할 학생이 없습니다(제출물이 없거나 비어 있음).'); return; }
-    if (!confirm(list.length + '명을 Claude(' + Claude.getModel() + ')로 채점합니다. 실제 API 요금이 청구됩니다. 계속할까요?')) return;
+    if (!list.length) { toast(ai.name + '로 채점할 학생이 없습니다(제출물이 없거나 비어 있음).'); return; }
+    if (!confirm(list.length + '명을 ' + ai.name + '(' + ai.api().getModel() + ')로 채점합니다. API 사용량(요금 또는 무료 한도)이 차감됩니다. 계속할까요?')) return;
     if (btn) btn.disabled = true;
-    let done = 0, failed = 0;
-    await runWithConcurrency(list, 3, async (s) => {
-      try { await gradeStudentWithClaude(s); } catch (e) { failed++; console.error(s.name, e); }
+    let done = 0, failed = 0, lastError = '';
+    await runWithConcurrency(list, ai.concurrency, async (s) => {
+      try { await gradeStudentWithAI(s, provider); } catch (e) { failed++; lastError = e.message; console.error(s.name, e); }
       done++;
-      if (btn) btn.textContent = 'Claude 채점 중 (' + done + '/' + list.length + ')…';
+      if (btn) btn.textContent = ai.name + ' 채점 중 (' + done + '/' + list.length + ')…';
       renderStudentList();
       if (state.selectedUserId === s.userId) renderGradingPanel(s);
     });
     if (btn) { btn.disabled = false; btn.textContent = idleLabel; }
     persist();
-    toast('Claude 채점 완료: ' + (done - failed) + '명 성공' + (failed ? ', ' + failed + '명 실패' : ''), 6000);
+    toast(ai.name + ' 채점 완료: ' + (done - failed) + '명 성공' + (failed ? ', ' + failed + '명 실패 (' + lastError + ')' : ''), 8000);
   }
+
+  $('#geminiGradeAllBtn').addEventListener('click', () => {
+    runAiGradeBulk('gemini', state.students.filter((s) => !s.confirmed), $('#geminiGradeAllBtn'), '✨ 전체 Gemini 채점');
+  });
+  $('#geminiGradeSelectedBtn').addEventListener('click', () => {
+    const n = state.checkedIds.size;
+    runAiGradeBulk('gemini', state.students.filter((s) => state.checkedIds.has(s.userId)), $('#geminiGradeSelectedBtn'), '✨ 선택 학생 Gemini 채점 (' + n + ')');
+  });
 
   $('#claudeGradeAllBtn').addEventListener('click', () => {
     const targets = state.students.filter((s) => !s.confirmed);
@@ -705,7 +748,9 @@
     const gradeBtn = $('#claudeGradeSelectedBtn'), clearBtn = $('#clearSelectionBtn');
     gradeBtn.classList.toggle('hidden', n === 0);
     clearBtn.classList.toggle('hidden', n === 0);
-    gradeBtn.textContent = '🤖 선택 학생 채점 (' + n + ')';
+    gradeBtn.textContent = '🤖 선택 학생 Claude 채점 (' + n + ')';
+    $('#geminiGradeSelectedBtn').classList.toggle('hidden', n === 0);
+    $('#geminiGradeSelectedBtn').textContent = '✨ 선택 학생 Gemini 채점 (' + n + ')';
     $('#commentSelectedBtn').classList.toggle('hidden', n === 0);
     $('#commentSelectedBtn').textContent = '💬 선택 학생 근거 댓글 (' + n + ')';
   }
@@ -717,7 +762,7 @@
   $('#claudeGradeSelectedBtn').addEventListener('click', () => {
     const n = state.checkedIds.size;
     const targets = state.students.filter((s) => state.checkedIds.has(s.userId));
-    runClaudeGradeBulk(targets, $('#claudeGradeSelectedBtn'), '🤖 선택 학생 채점 (' + n + ')');
+    runClaudeGradeBulk(targets, $('#claudeGradeSelectedBtn'), '🤖 선택 학생 Claude 채점 (' + n + ')');
   });
   $('#clearSelectionBtn').addEventListener('click', () => {
     state.checkedIds.clear();
@@ -976,6 +1021,10 @@
 
     const head = `
       <div class="detail-head">
+        <span class="step-btns">
+          <button class="btn ghost small" data-step="-1" title="이전 학생">◀ 이전</button>
+          <button class="btn ghost small" data-step="1" title="다음 학생">다음 ▶</button>
+        </span>
         <h3>${esc(s.name)}${s.studentNo ? ` <span class="stuno">(${esc(s.studentNo)})</span>` : ''}</h3>
         <span class="head-score" id="dvScore">${Grading.total(state.rubric, s.checks, s.status)}점</span>
         ${s.crGrade ? `<span class="cr-grade" title="구글 클래스룸에 입력된 점수(${s.crGrade.kind})">클래스룸 ${esc(s.crGrade.value)}점${s.crGrade.kind === '임시' ? '(임시)' : ''}</span>` : ''}
@@ -1031,6 +1080,9 @@
       el.querySelector('#dvExtra').innerHTML = extra;
     }
 
+    el.querySelectorAll('[data-step]').forEach((btn) => {
+      btn.addEventListener('click', () => stepStudent(Number(btn.dataset.step)));
+    });
     el.querySelectorAll('[data-view]').forEach((btn) => {
       btn.addEventListener('click', () => { state.viewIdx[s.userId] = Number(btn.dataset.view); renderDocViewer(s); });
     });
@@ -1074,7 +1126,7 @@
               sub = '<div class="evidence ai-mark-note">🤖 이 항목은 AI 의심으로 표시됨 — 0점 처리(직접 체크로 되돌릴 수 있음)</div>';
             } else if (on) {
               const reason = aiEv != null ? aiEv : (Grading.explain(g, c, s.text, suspect).met ? Grading.explain(g, c, s.text, suspect).reason : '선생님이 직접 체크');
-              sub = `<div class="evidence">✓ ${aiEv != null ? '🤖 ' : ''}${esc(reason)}</div>`;
+              sub = `<div class="evidence">✓ ${aiEv != null ? (s.gradedBy === 'Gemini' ? '✨ ' : '🤖 ') : ''}${esc(reason)}</div>`;
               // 5점 단위라 점수는 줬지만 부족했던 부분(예전 -2.5점 사항 등)은 코멘트로 — 고칠 수 있음
               const cm = Grading.commentFor(g, c, s);
               if (cm) sub += `
@@ -1087,7 +1139,7 @@
               const defaultReason = edited ? Grading.reasonFor(g, c, s) : aiEv != null ? aiEv : Grading.reasonFor(g, c, s);
               sub = `
                 <div class="reason-box">
-                  <div class="reason-head">미충족 근거 ${aiEv != null && !edited ? '<span class="edited">🤖 Claude</span>' : ''}${edited ? '<span class="edited">수정함</span><button class="link-btn" data-resetreason="' + esc(c.id) + '">자동 근거로 되돌리기</button>' : ''}</div>
+                  <div class="reason-head">미충족 근거 ${aiEv != null && !edited ? '<span class="edited">' + (s.gradedBy === 'Gemini' ? '✨ Gemini' : '🤖 Claude') + '</span>' : ''}${edited ? '<span class="edited">수정함</span><button class="link-btn" data-resetreason="' + esc(c.id) + '">자동 근거로 되돌리기</button>' : ''}</div>
                   <textarea data-reason="${esc(c.id)}" rows="2" placeholder="감점 근거를 입력하세요">${esc(defaultReason)}</textarea>
                 </div>`;
             }
@@ -1118,7 +1170,7 @@
     el.innerHTML = `
       <div class="grading-head">
         <h3 style="margin:0">${esc(s.name)} 채점</h3>
-        ${!absent ? `<button class="btn ghost small" id="claudeGradeBtn">🤖 Claude로 채점</button>` : ''}
+        ${!absent ? `<span class="ai-grade-btns"><button class="btn ghost small" id="geminiGradeBtn">✨ Gemini로 채점</button><button class="btn ghost small" id="claudeGradeBtn">🤖 Claude로 채점</button></span>` : ''}
       </div>
       ${!absent ? `<div class="teacher-bar">
         <button class="btn primary small" id="teacherSaveBtn">💾 교사 수정 저장</button>
@@ -1126,7 +1178,7 @@
         <button class="btn ghost small" id="commentOneBtn" title="이 학생 제출 파일에 감점 근거를 댓글로 남깁니다(보내기 전에 미리보기)">💬 근거 댓글${s.feedbackPosted ? ' ✓' : ''}</button>
         <span class="muted">${s.teacherSavedAt ? '저장 ' + esc(new Date(s.teacherSavedAt).toLocaleString('ko-KR')) + ' · ' : ''}선생님이 바꾼 체크는 자동 재채점·Claude 채점을 해도 유지됩니다</span>
       </div>` : ''}
-      ${s.gradedByAI ? `<div class="ai-graded-note">🤖 Claude가 채점함 (${esc(new Date(s.gradedByAIAt).toLocaleString('ko-KR'))}) — 체크와 근거를 확인하고 필요하면 고치세요.</div>` : ''}
+      ${s.gradedByAI ? `<div class="ai-graded-note">${s.gradedBy === 'Gemini' ? '✨ Gemini' : '🤖 Claude'}가 채점함 (${esc(new Date(s.gradedByAIAt).toLocaleString('ko-KR'))}) — 체크와 근거를 확인하고 필요하면 고치세요.</div>` : ''}
       ${absent ? '<p class="muted">미제출 — 0점</p>' : `
       <div class="ai-box ${suspect ? 'on' : ''}">
         <label class="check-line"><input type="checkbox" id="aiSuspectChk" ${suspect ? 'checked' : ''}>
@@ -1251,6 +1303,23 @@
     el.querySelector('#notesInput').addEventListener('input', (e) => {
       s.note = e.target.value;
       persist();
+    });
+    const ggBtn = el.querySelector('#geminiGradeBtn');
+    if (ggBtn) ggBtn.addEventListener('click', async () => {
+      if (!Gemini.getKey()) { toast(AI.gemini.keyMsg, 5000); return; }
+      ggBtn.disabled = true;
+      ggBtn.textContent = '채점 중…';
+      try {
+        await gradeStudentWithAI(s, 'gemini');
+        persist();
+        renderStudentList();
+        renderGradingPanel(s);
+        toast('Gemini 채점 완료');
+      } catch (e) {
+        toast('Gemini 채점 실패: ' + e.message, 6000);
+        ggBtn.disabled = false;
+        ggBtn.textContent = '✨ Gemini로 채점';
+      }
     });
     const cgBtn = el.querySelector('#claudeGradeBtn');
     if (cgBtn) cgBtn.addEventListener('click', async () => {
@@ -1481,6 +1550,7 @@
 
   showTab('grade');
   updateScoreToggle();
+  applyListCollapsed();
   renderRubricTab();
 
   window.addEventListener('load', () => {

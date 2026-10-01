@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>클래스룸 수행평가 채점 도우미</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-<link rel="stylesheet" href="style.css?v=202610011349">
+<link rel="stylesheet" href="style.css?v=202610011353">
 </head>
 <body>
   <header class="topbar">
@@ -50,8 +50,11 @@
           <h2 id="workTitle">제출 현황</h2>
           <div>
             <button id="regradeBtn2" class="btn ghost small">전체 자동 재채점</button>
+            <button id="listToggleBtn" class="btn ghost small" title="왼쪽 학생 목록을 접어 제출 자료와 평가 항목만 크게 봅니다">목록 접기</button>
             <button id="scoreToggleBtn" class="btn ghost small" title="왼쪽 학생 목록의 점수를 보이거나 숨깁니다">점수 숨기기</button>
             <button id="claudeGradeAllBtn" class="btn ghost small" title="확인 완료되지 않은 학생 전원을 Claude로 채점(API 요금 발생)">🤖 전체 Claude 채점</button>
+            <button id="geminiGradeAllBtn" class="btn ghost small" title="확인 완료되지 않은 학생 전원을 Gemini로 채점(⚙ 설정의 Gemini API 키 사용)">✨ 전체 Gemini 채점</button>
+            <button id="geminiGradeSelectedBtn" class="btn ghost small hidden" title="왼쪽 목록에서 체크한 학생만 Gemini로 채점">✨ 선택 학생 Gemini 채점</button>
             <button id="claudeGradeSelectedBtn" class="btn ghost small hidden" title="왼쪽 목록에서 체크한 학생만 Claude로 채점(API 요금 발생)">🤖 선택 학생 채점</button>
             <button id="commentSelectedBtn" class="btn ghost small hidden" title="왼쪽 목록에서 체크한 학생의 제출 파일에 감점 근거를 댓글로 남깁니다(보내기 전에 미리보기)">💬 선택 학생 근거 댓글</button>
             <button id="clearSelectionBtn" class="btn ghost small hidden" title="선택 해제">선택 해제</button>
@@ -65,7 +68,7 @@
         <p class="hint" style="margin:6px 0 12px">채점 내용은 체크·수정할 때마다 이 브라우저에 자동 저장됩니다. 다른 컴퓨터로 옮기거나
           만약을 위해 따로 보관하려면 <b>채점 결과 저장</b>으로 파일을 받아 두고, 나중에 <b>채점 결과 불러오기</b>로 이어서 채점하세요.</p>
         <div id="similarityPanel" class="similarity-panel hidden"></div>
-        <div class="split3">
+        <div class="split3" id="split3">
           <div class="student-list" id="studentList"></div>
           <div class="doc-viewer" id="docViewer">
             <p class="muted">왼쪽 목록에서 학생을 선택하세요.</p>
@@ -229,16 +232,16 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
   </script>
 
-  <script src="js/config.js?v=202610011349"></script>
-  <script src="js/auth.js?v=202610011349"></script>
-  <script src="js/api.js?v=202610011349"></script>
-  <script src="js/extract.js?v=202610011349"></script>
-  <script src="js/grading.js?v=202610011349"></script>
-  <script src="js/similarity.js?v=202610011349"></script>
-  <script src="js/gemini.js?v=202610011349"></script>
-  <script src="js/claude.js?v=202610011349"></script>
-  <script src="js/rubric-import.js?v=202610011349"></script>
-  <script src="js/store.js?v=202610011349"></script>
-  <script src="js/app.js?v=202610011349"></script>
+  <script src="js/config.js?v=202610011353"></script>
+  <script src="js/auth.js?v=202610011353"></script>
+  <script src="js/api.js?v=202610011353"></script>
+  <script src="js/extract.js?v=202610011353"></script>
+  <script src="js/grading.js?v=202610011353"></script>
+  <script src="js/similarity.js?v=202610011353"></script>
+  <script src="js/gemini.js?v=202610011353"></script>
+  <script src="js/claude.js?v=202610011353"></script>
+  <script src="js/rubric-import.js?v=202610011353"></script>
+  <script src="js/store.js?v=202610011353"></script>
+  <script src="js/app.js?v=202610011353"></script>
 </body>
 </html>
