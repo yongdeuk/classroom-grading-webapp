@@ -290,3 +290,5 @@ label.inline input { width: 70px; font-size: 12.5px; padding: 5px 8px; }
 
 .list-tools { display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap; padding: 0 2px 6px; }
 .list-tools .btn { padding: 3px 9px; font-size: 12px; }
+
+.student-row { user-select: none; }

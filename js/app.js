@@ -1023,7 +1023,21 @@
     wrap.querySelectorAll('.student-row').forEach((row) => {
       row.addEventListener('click', (e) => {
         if (e.target.closest('[data-del]') || e.target.closest('[data-check]')) return;
+        // 같은 학생을 빠르게 세 번 클릭하면 확인 완료 ↔ 해제 (클릭할 때마다 목록을 다시 그리므로 직접 센다)
+        const now = Date.now();
+        const tc = state.tripleClick || {};
+        const count = tc.uid === row.dataset.uid && now - tc.at < 500 ? tc.count + 1 : 1;
+        state.tripleClick = { uid: row.dataset.uid, at: now, count };
         state.selectedUserId = row.dataset.uid;
+        if (count === 3) {
+          state.tripleClick = null;
+          const st = selectedStudent();
+          if (st && st.status !== '미제출') {
+            st.confirmed = !st.confirmed;
+            persist();
+            toast(st.name + (st.confirmed ? ' — 확인 완료' : ' — 확인 완료 해제'));
+          }
+        }
         renderStudentList();
         const s = selectedStudent();
         renderDocViewer(s);
