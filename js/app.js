@@ -63,7 +63,7 @@
         sig: s.sig, text: s.text, extractStatus: s.extractStatus,
         checks: s.checks, confirmed: s.confirmed, note: s.note, reasonEdits: s.reasonEdits, comments: s.comments, blank: s.blank, aiSuspect: s.aiSuspect,
         aiEvidence: s.aiEvidence, gradedByAI: s.gradedByAI, gradedBy: s.gradedBy, gradedByAIAt: s.gradedByAIAt, feedbackPosted: s.feedbackPosted,
-        teacherChecks: s.teacherChecks, teacherSavedAt: s.teacherSavedAt,
+        teacherChecks: s.teacherChecks, teacherSavedAt: s.teacherSavedAt, aiUndo: s.aiUndo || null,
       };
     }
     Store.save(state.courseId, state.courseWorkId, { rubric: state.rubric, students, hidden: Array.from(state.hidden), updatedAt: Date.now() });
@@ -312,6 +312,7 @@
             feedbackPosted: prev.feedbackPosted || null,
             // 선생님 수정은 같은 제출물일 때만 유지(재제출하면 새로 채점)
             teacherChecks: sigMatch ? prev.teacherChecks || {} : {},
+            aiUndo: sigMatch ? prev.aiUndo || null : null,
             teacherSavedAt: sigMatch ? prev.teacherSavedAt || null : null,
             gradedByAIAt: sigMatch ? prev.gradedByAIAt || null : null,
           };
@@ -449,10 +450,21 @@
     gemini: { name: 'Gemini', icon: '✨', api: () => Gemini, keyMsg: '먼저 ⚙ 설정에서 Gemini API 키를 입력해 주세요.', concurrency: 2 },
   };
   async function gradeStudentWithClaude(s) { return gradeStudentWithAI(s, 'claude'); }
+  // AI 채점 되돌리기: 채점 직전의 체크·근거·표시로 복원
+  function undoAiGrade(s) {
+    if (!s.aiUndo) return false;
+    const u = s.aiUndo;
+    s.checks = u.checks; s.aiEvidence = u.aiEvidence; s.flags = u.flags;
+    s.gradedByAI = u.gradedByAI; s.gradedBy = u.gradedBy; s.gradedByAIAt = u.gradedByAIAt;
+    s.aiUndo = null;
+    return true;
+  }
   async function gradeStudentWithAI(s, provider) {
     const ai = AI[provider];
     if (!s.text) throw new Error('추출된 텍스트가 없습니다. "다시 추출"을 먼저 눌러 주세요.');
     const result = await ai.api().gradeSubmission(state.rubric, s.text);
+    // 되돌리기용: AI가 바꾸기 직전 상태를 보관
+    s.aiUndo = clone({ checks: s.checks || {}, aiEvidence: s.aiEvidence || {}, flags: s.flags || [], gradedByAI: !!s.gradedByAI, gradedBy: s.gradedBy || '', gradedByAIAt: s.gradedByAIAt || null });
     s.checks = s.checks || {};
     s.aiEvidence = {};
     for (const g of state.rubric.groups) {
@@ -734,12 +746,18 @@
     const ticker = setInterval(show, 1000);
     $('#aiProgressStop').textContent = '중지';
     $('#aiProgressStop').onclick = () => { stopped = true; show(); };
-    if (provider === 'gemini') Gemini.setWaitListener((wait, status) => { waitNote = (status === 429 ? '요청 한도 초과' : '서버 오류 ' + status) + ' — ' + wait + '초 기다렸다 다시 시도'; show(); });
+    if (provider === 'gemini') Gemini.setWaitListener((wait, status, model, nextModel) => {
+      const why = status === 429 ? '요청 한도 초과' : status === 404 ? '모델 없음' : '구글 서버 과부하(' + status + ')';
+      waitNote = nextModel ? model + ' ' + why + ' → ' + nextModel + ' 모델로 바꿔 시도' : model + ' ' + why + ' — ' + wait + '초 뒤 다시 시도';
+      show();
+    });
+    const gradedNow = [];
+    $('#aiProgressUndo').classList.add('hidden');
     show();
     await runWithConcurrency(list, ai.concurrency, async (s) => {
       if (stopped) return;
       working.add(s.name); show();
-      try { await gradeStudentWithAI(s, provider); waitNote = ''; } catch (e) { failed++; lastError = e.message; console.error(s.name, e); }
+      try { await gradeStudentWithAI(s, provider); gradedNow.push(s); waitNote = ''; } catch (e) { failed++; lastError = e.message; console.error(s.name, e); }
       working.delete(s.name);
       done++;
       if (btn) btn.textContent = ai.name + ' 채점 중 (' + done + '/' + list.length + ')…';
@@ -754,7 +772,19 @@
     persist();
     const summary = ai.name + ' 채점 ' + (stopped ? '중지' : '완료') + ': ' + (done - failed) + '명 성공' + (failed ? ', ' + failed + '명 실패 (' + lastError + ')' : '') + (stopped ? ', ' + (list.length - done) + '명 남음' : '');
     $('#aiProgressTitle').textContent = (failed ? '⚠ ' : '✅ ') + summary;
-    $('#aiProgressText').textContent = Math.round((Date.now() - t0) / 1000) + '초 걸림';
+    $('#aiProgressText').textContent = Math.round((Date.now() - t0) / 1000) + '초 걸림' + (provider === 'gemini' && gradedNow.length ? ' · 사용한 모델: ' + Gemini.getLastModel() : '');
+    if (gradedNow.length) {
+      $('#aiProgressUndo').classList.remove('hidden');
+      $('#aiProgressUndo').onclick = () => {
+        if (!confirm('이번에 ' + ai.name + '가 채점한 ' + gradedNow.length + '명을 채점 전 상태로 되돌릴까요?')) return;
+        let n = 0;
+        for (const s of gradedNow) if (undoAiGrade(s)) n++;
+        persist();
+        renderAllGrading();
+        $('#aiProgress').classList.add('hidden');
+        toast(n + '명을 채점 전 상태로 되돌렸습니다');
+      };
+    }
     $('#aiProgressBar').style.width = '100%';
     $('#aiProgressStop').textContent = '닫기';
     $('#aiProgressStop').onclick = () => { $('#aiProgress').classList.add('hidden'); $('#aiProgressStop').textContent = '중지'; };
@@ -968,7 +998,9 @@
       ? `<div class="hidden-bar">삭제한 학생 ${state.hidden.size}명 <button class="link-btn" id="restoreHiddenBtn">모두 되돌리기</button></div>`
       : '';
     const nSub = visible.filter((s) => s.status !== '미제출').length;
-    const scoreBar = `<div class="list-tools"><span class="list-count">제출 <b>${nSub}</b>명 · 미제출 <b>${visible.length - nSub}</b>명</span></div>`;
+    const submittedIds = visible.filter((s) => s.status !== '미제출').map((s) => s.userId);
+    const allChecked = submittedIds.length > 0 && submittedIds.every((id) => state.checkedIds.has(id));
+    const scoreBar = `<div class="list-tools"><span class="list-count">제출 <b>${nSub}</b>명 · 미제출 <b>${visible.length - nSub}</b>명</span><button class="btn ghost small" id="selectAllBtn" title="제출한 학생을 모두 선택(선택 학생 채점·근거 댓글용)">${allChecked ? '전체 해제' : '전체 선택'}</button></div>`;
     updateScoreToggle();
     wrap.classList.toggle('hide-scores', !state.showScores);
     wrap.innerHTML = scoreBar + restoreBar + visible
@@ -998,12 +1030,20 @@
         renderGradingPanel(s);
       });
     });
+    wrap.querySelector('#selectAllBtn').addEventListener('click', () => {
+      if (allChecked) submittedIds.forEach((id) => state.checkedIds.delete(id));
+      else submittedIds.forEach((id) => state.checkedIds.add(id));
+      renderStudentList();
+      updateSelectionButtons();
+    });
     wrap.querySelectorAll('[data-check]').forEach((cb) => {
       cb.addEventListener('click', (e) => e.stopPropagation());
       cb.addEventListener('change', () => {
         const uid = cb.dataset.check;
         if (cb.checked) state.checkedIds.add(uid); else state.checkedIds.delete(uid);
         updateSelectionButtons();
+        const sa = wrap.querySelector('#selectAllBtn');
+        if (sa) sa.textContent = submittedIds.length > 0 && submittedIds.every((id) => state.checkedIds.has(id)) ? '전체 해제' : '전체 선택';
       });
     });
     wrap.querySelectorAll('[data-del]').forEach((btn) => {
@@ -1209,7 +1249,7 @@
         <button class="btn ghost small" id="commentOneBtn" title="이 학생 제출 파일에 감점 근거를 댓글로 남깁니다(보내기 전에 미리보기)">💬 근거 댓글${s.feedbackPosted ? ' ✓' : ''}</button>
         <span class="muted">${s.teacherSavedAt ? '저장 ' + esc(new Date(s.teacherSavedAt).toLocaleString('ko-KR')) + ' · ' : ''}선생님이 바꾼 체크는 자동 재채점·Claude 채점을 해도 유지됩니다</span>
       </div>` : ''}
-      ${s.gradedByAI ? `<div class="ai-graded-note">${s.gradedBy === 'Gemini' ? '✨ Gemini' : '🤖 Claude'}가 채점함 (${esc(new Date(s.gradedByAIAt).toLocaleString('ko-KR'))}) — 체크와 근거를 확인하고 필요하면 고치세요.</div>` : ''}
+      ${s.gradedByAI ? `<div class="ai-graded-note">${s.gradedBy === 'Gemini' ? '✨ Gemini' : '🤖 Claude'}가 채점함 (${esc(new Date(s.gradedByAIAt).toLocaleString('ko-KR'))}) — 체크와 근거를 확인하고 필요하면 고치세요.${s.aiUndo ? ' <button class="link-btn" id="aiUndoBtn">↩ 채점 전으로 되돌리기</button>' : ''}</div>` : ''}
       ${absent ? '<p class="muted">미제출 — 0점</p>' : `
       <div class="ai-box ${suspect ? 'on' : ''}">
         <label class="check-line"><input type="checkbox" id="aiSuspectChk" ${suspect ? 'checked' : ''}>
@@ -1334,6 +1374,10 @@
     el.querySelector('#notesInput').addEventListener('input', (e) => {
       s.note = e.target.value;
       persist();
+    });
+    const undoBtn = el.querySelector('#aiUndoBtn');
+    if (undoBtn) undoBtn.addEventListener('click', () => {
+      if (undoAiGrade(s)) { persist(); renderStudentList(); renderGradingPanel(s); toast(s.name + ' — AI 채점 전 상태로 되돌렸습니다'); }
     });
     const ggBtn = el.querySelector('#geminiGradeBtn');
     if (ggBtn) ggBtn.addEventListener('click', async () => {

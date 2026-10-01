@@ -287,3 +287,6 @@ label.inline input { width: 70px; font-size: 12.5px; padding: 5px 8px; }
 .ai-progress-top .muted { flex: 1; font-size: 12.5px; }
 .ai-progress-track { height: 10px; border-radius: 999px; background: #dfe3fb; overflow: hidden; }
 .ai-progress-bar { height: 100%; width: 3%; border-radius: 999px; background: var(--primary); transition: width .4s ease; }
+
+.list-tools { display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap; padding: 0 2px 6px; }
+.list-tools .btn { padding: 3px 9px; font-size: 12px; }
