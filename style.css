@@ -515,3 +515,98 @@ select, input[type="text"], input[type="number"], input[type="password"], textar
 .step-btns { display: inline-flex; gap: 4px; margin-right: 4px; }
 .step-btns .btn { padding: 4px 9px; }
 @media (max-width: 1100px) { .split3.list-collapsed { grid-template-columns: 1fr; } }
+
+/* ==========================================================================
+   색상 레이어: 남색 상단 바 + 파랑 주요 동작 + 영역별 색 + 충족(초록)/미충족(빨강)
+   ========================================================================== */
+:root {
+  --bg: #eef2fb;
+  --primary: #2f5bea;
+  --primary-dark: #1e40c4;
+  --primary-tint: #e6edff;
+  --navy: #14235a;
+  --ink: #2f5bea;            /* 주요 버튼·점수 배지를 파랑으로 */
+  --ink-hover: #1e40c4;
+  --ring: 0 0 0 3px rgba(47, 91, 234, .25);
+}
+body { background: linear-gradient(180deg, #e8eefc 0%, #f3f5fb 240px) fixed, var(--bg); }
+
+/* 상단 바: 남색 그라데이션 + 흰 글자 */
+.topbar { background: linear-gradient(90deg, #14235a 0%, #24409e 60%, #2f5bea 100%); border-bottom: none; box-shadow: 0 2px 12px rgba(20, 35, 90, .25); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.topbar h1, .home-link, .home-link:hover { color: #fff; }
+.home-link::before, .home-link:hover::before { background: #fff; color: var(--primary); }
+#userInfo { color: #c7d5ff; }
+.topbar .btn, .topbar .btn.ghost { background: rgba(255, 255, 255, .12); border-color: rgba(255, 255, 255, .35); color: #fff; box-shadow: none; }
+.topbar .btn:hover, .topbar .btn.ghost:hover { background: rgba(255, 255, 255, .24); border-color: #fff; }
+.topbar .btn.primary { background: #fff; color: var(--primary-dark); border-color: #fff; }
+
+/* 패널 머리와 제목에 색 */
+.panel, .doc-viewer, .grading-panel, .settings-head { border-color: #d5ddf3; box-shadow: 0 1px 2px rgba(20, 35, 90, .05), 0 10px 28px -14px rgba(20, 35, 90, .18); }
+.work-title, #workTitle, .settings-head h2 { color: var(--navy); }
+.panel-head h2 { color: var(--navy); }
+.settings-head { background: linear-gradient(90deg, #e6edff, #fff); }
+
+/* 버튼 */
+.btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; box-shadow: 0 2px 8px -2px rgba(47, 91, 234, .5); }
+.btn.primary:hover { background: var(--primary-dark); border-color: var(--primary-dark); }
+.btn.ghost:hover, .btn:hover { border-color: var(--primary); color: var(--primary-dark); background: #f3f6ff; }
+#claudeGradeAllBtn, #claudeGradeSelectedBtn, #claudeGradeBtn { background: #fff4ea; border-color: #f2b27a; color: #9a4a08; }
+#claudeGradeAllBtn:hover, #claudeGradeSelectedBtn:hover, #claudeGradeBtn:hover { background: #ffe6cf; border-color: #e08a3c; color: #7c3a05; }
+#geminiGradeAllBtn, #geminiGradeSelectedBtn, #geminiGradeBtn { background: #efeaff; border-color: #b6a3f5; color: #4c2bb8; }
+#geminiGradeAllBtn:hover, #geminiGradeSelectedBtn:hover, #geminiGradeBtn:hover { background: #e2d9ff; border-color: #8f74ee; color: #3a1f96; }
+#teacherSaveBtn { background: #0f9d6b; border-color: #0f9d6b; box-shadow: 0 2px 8px -2px rgba(15, 157, 107, .5); }
+#teacherSaveBtn:hover { background: #0b7f56; border-color: #0b7f56; }
+#sampleBtn { background: #fff8db; border-color: #e8c341; color: #7a5a00; }
+#commentOneBtn, #commentSelectedBtn { background: #e8f6ff; border-color: #8cc8ee; color: #0b5c8c; }
+
+/* 학생 목록 */
+.list-count b { color: var(--primary-dark); }
+.student-row:hover { background: #e9efff; }
+.student-row.selected { background: var(--primary-tint); border-color: #9db5f7; border-left: 4px solid var(--primary); }
+.student-row .status { background: #dff5ea; color: #0b6b47; }
+.student-row .status.late { background: #ffe9b8; color: #8a5200; }
+.student-row .status.absent { background: #e4e7ee; color: #4b5563; }
+.student-row .total { color: var(--primary-dark); }
+.student-row .confirm-dot.on { background: #0f9d6b; box-shadow: 0 0 0 3px rgba(15, 157, 107, .18); }
+.student-row.selected .status { background: #fff; }
+
+/* 가운데 */
+.detail-head h3 { color: var(--navy); }
+.head-score { background: linear-gradient(135deg, #2f5bea, #6a4df0); color: #fff; box-shadow: 0 2px 8px -2px rgba(47, 91, 234, .55); }
+.file-chip.active { background: var(--primary-tint); border-color: #9db5f7; }
+.file-chip a { color: var(--primary-dark); }
+.cr-grade { background: #dff5ea; border-color: #8fd9b6; color: #0b6b47; }
+
+/* 채점 패널: 영역마다 색 */
+.grading-head h3 { color: var(--navy); }
+.grade-group { border: 1px solid #d5ddf3; border-radius: 12px; padding: 10px 12px 8px; background: #fff; border-top: 4px solid var(--g, #2f5bea); }
+.grade-group:nth-of-type(3n+1) { --g: #2f5bea; --g-tint: #e6edff; --g-dark: #1e40c4; }
+.grade-group:nth-of-type(3n+2) { --g: #7c4ddb; --g-tint: #efe8ff; --g-dark: #5a2fb8; }
+.grade-group:nth-of-type(3n+3) { --g: #0f9aa8; --g-tint: #dff6f8; --g-dark: #0a6f7a; }
+.grade-group-head { border-bottom: none; padding-bottom: 0; color: var(--g-dark, #1e40c4); }
+.grade-group-head .g-score { background: var(--g-tint, #e6edff); color: var(--g-dark, #1e40c4); border-radius: 999px; padding: 2px 10px; font-size: 13px; }
+.check-item.on { background: #edfaf3; }
+.check-item.on:hover { background: #e2f6ec; }
+.check-item.unmet { background: #fff1f1; }
+.check-line input[type="checkbox"], .check-item input[type="checkbox"], #confirmChk { accent-color: #0f9d6b; }
+.row-check { accent-color: var(--primary); }
+#aiSuspectChk { accent-color: #dc2626; }
+.check-line .c-points, .check-item .c-points { color: var(--g-dark, #1e40c4); }
+.evidence { color: #0b6b47; }
+.teacher-bar { background: #ecfbf4; border-color: #a9e5cb; }
+.total-line { border-top: 2px solid #d5ddf3; }
+.total-line #totalScore { color: var(--primary-dark); font-size: 26px; }
+.ai-graded-note { background: #efeaff; border-color: #c9bbf8; color: #4c2bb8; }
+
+/* 설정 화면 */
+.dropzone, .ref-box { border-color: #9db5f7; background: #f5f8ff; }
+.drop-title, .ref-title { color: var(--navy); }
+.rubric-group { background: #f7f9ff; border-color: #d5ddf3; border-left: 4px solid var(--primary); }
+.rubric-group:nth-of-type(3n+2) { border-left-color: #7c4ddb; }
+.rubric-group:nth-of-type(3n+3) { border-left-color: #0f9aa8; }
+.sub-h { color: var(--navy); }
+.ref-table th { background: #eef2fb; color: var(--navy); }
+
+/* 알림 */
+.toast { background: var(--navy); }
+.step-btns .btn { color: var(--primary-dark); border-color: #9db5f7; background: #f3f6ff; }
